@@ -377,3 +377,7 @@ a, .back, .link-btn { color: #2d6a3e; }
 .column.vertical li { color: var(--ink); }
 .column.vertical li.sea:nth-last-child(-n + 3) { color: #f3f6f1; }
 .column.vertical li.land + li.sea { border-top: 2px solid rgb(255 255 255 / 0.7); }
+
+/* shown only without JavaScript (and read by crawlers that do not run it) */
+.noscript { position: relative; z-index: 5; max-width: 40rem; margin: 6rem auto; padding: 0 1.25rem; color: #f4f8f7; line-height: 1.55; }
+.noscript a { color: #e9b44c; }

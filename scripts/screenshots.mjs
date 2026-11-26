@@ -9,12 +9,14 @@ const out = 'docs/img';
 mkdirSync(out, { recursive: true });
 
 const shots = [
-  { file: 'life-here.png', hash: '#at=-2.33,34.83', size: [1440, 900], wait: '.tile img.in' },
-  { file: 'species.png', hash: '#sp=2435238', size: [1440, 900], wait: '.column.vertical' },
-  { file: 'looked.png', hash: '#layer=looked', size: [1440, 900], wait: null },
-  { file: 'search.png', hash: '', size: [1440, 900], search: 'snow leopard' },
-  { file: 'compare.png', hash: '#sp=2435350&vs=5219404', size: [1440, 900], wait: '.cmp-head' },
-  { file: 'phone.png', hash: '#at=41.30,69.24', size: [390, 844], wait: '.tile img.in', mobile: true },
+  { file: 'life-here.jpg', hash: '#at=-2.33,34.83', size: [1440, 900], wait: '.tile img.in' },
+  // the link preview (og:image) is the same view at 1200 x 630
+  { file: '../../public/og-image.jpg', hash: '#at=-2.33,34.83', size: [1200, 630], wait: '.tile img.in' },
+  { file: 'species.jpg', hash: '#sp=2481353', size: [1440, 900], wait: '.column.vertical' },
+  { file: 'looked.jpg', hash: '#layer=looked', size: [1440, 900], wait: null },
+  { file: 'search.jpg', hash: '', size: [1440, 900], search: 'snow leopard' },
+  { file: 'compare.jpg', hash: '#sp=2435350&vs=5219404', size: [1440, 900], wait: '.cmp-head' },
+  { file: 'phone.jpg', hash: '#at=41.30,69.24', size: [390, 844], wait: '.tile img.in', mobile: true },
 ]
 
 const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] });
@@ -32,7 +34,7 @@ for (const s of shots) {
   }
   if (s.wait) await page.waitForSelector(s.wait, { timeout: 90000 }).catch(() => console.warn(`${s.file}: ${s.wait} did not appear`));
   await page.waitForTimeout(4000); // tiles, photos and the fly-to settle
-  await page.screenshot({ path: `${out}/${s.file}` });
+  await page.screenshot({ path: `${out}/${s.file}`, type: 'jpeg', quality: 82 });
   console.log(`${out}/${s.file}`);
   await ctx.close();
 }
