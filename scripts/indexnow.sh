@@ -31,11 +31,13 @@ else
   [ "$URLS" != "[]" ] || { echo "sitemap not live yet"; exit 1; }
 fi
 
-echo "IndexNow: $(python3 -c 'import json,sys;print(len(json.loads(sys.argv[1])))' "$URLS") URL(s)"
-if [ -n "${DRY_RUN:-}" ]; then echo "$URLS"; exit 0; fi   # DRY_RUN=1: print the list, send nothing
+# the list goes through a file, not the command line: 3,000+ URLs exceed Linux's argument limit
+BODY=$(mktemp)
+trap 'rm -f "$BODY"' EXIT
+printf '%s' "$URLS" | python3 -I -c 'import json,sys; u=json.load(sys.stdin); json.dump({"host":sys.argv[1],"key":sys.argv[2],"keyLocation":f"https://{sys.argv[1]}/{sys.argv[2]}.txt","urlList":u}, open(sys.argv[3],"w")); print(f"IndexNow: {len(u)} URL(s)")' "$HOST" "$KEY" "$BODY"
+if [ -n "${DRY_RUN:-}" ]; then cat "$BODY"; exit 0; fi   # DRY_RUN=1: print the request, send nothing
 CODE=$(curl -s -o /dev/null -w "%{http_code}" -H 'Content-Type: application/json; charset=utf-8' \
-  -d "{\"host\":\"$HOST\",\"key\":\"$KEY\",\"keyLocation\":\"https://$HOST/$KEY.txt\",\"urlList\":$URLS}" \
-  https://api.indexnow.org/indexnow)
+  --data-binary @"$BODY" https://api.indexnow.org/indexnow)
 echo "IndexNow HTTP $CODE"
 # 200 OK, 202 Accepted (key validation pending); anything else is a failure
 [ "$CODE" = 200 ] || [ "$CODE" = 202 ]
