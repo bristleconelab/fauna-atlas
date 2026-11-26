@@ -24,6 +24,8 @@ export const AGE_COLORS = ['#5fc0b0', '#f2c94c', '#e07a5f', '#8e4fa0'];
 export const RANGE_COLORS = { then: '#b39ddb', now: '#f2c94c', both: '#f4f8f7', a: '#f2c94c', b: '#8ecbff' };
 /** GBIF map styles matching those colours (checked 2026-11-26: yellow-red squares, purple squares, blue dots). */
 const RANGE_STYLE = { all: 'classic-noborder.poly', then: 'purpleWhite.poly', now: 'classic-noborder.poly', a: 'classic-noborder.poly', b: 'blue.marker' };
+/** Map zoom from which the range cells are drawn at full size (see showRanges). */
+const RANGE_NEAR = 4;
 function COLORS_LOOKED() { return ['#2a1d5c', '#2f6f99', '#5fc0b0', '#c8ef9c', '#fff7c2']; }
 
 export const COLORS = { abyss: '#14261c', plankton: '#f2c94c', foam: '#f4f8f7', looked: COLORS_LOOKED() };
@@ -208,19 +210,25 @@ export class Globe {
     (this.map.getSource('square') as GeoJSONSource).setData(data);
   }
 
-  /** Species ranges as GBIF square-grid tiles: one layer per entry (all years, before 1990, since 2010, or species a/b). */
+  /** Species ranges as GBIF square-grid tiles: one entry each (all years, before 1990, since 2010, or species a/b).
+   *  GBIF cells are a fixed size within a tile, and zoomed out the globe shows lower-zoom tiles (lower still towards
+   *  the poles), so the same cells would cover more and more ground. Below RANGE_NEAR the cells are half the size;
+   *  the square grids nest, so the switch cuts no cell. */
   async showRanges(list: { key: number; mode: 'all' | 'then' | 'now' | 'a' | 'b' }[]) {
     await this.ready;
     for (const id of this.rangeLayers.splice(0)) { this.map.removeLayer(id); this.map.removeSource(id); }
     const YEAR = new Date().getUTCFullYear();
     list.forEach((r, i) => {
-      const id = `rng-${i}`;
       const filter: Record<string, string | number> = { taxonKey: r.key };
       if (r.mode === 'then') filter.year = '1700,1989';
       if (r.mode === 'now') filter.year = `2010,${YEAR}`;
-      this.map.addSource(id, { type: 'raster', tiles: [gbifTiles(filter, RANGE_STYLE[r.mode], 64)], tileSize: 256, maxzoom: 10, attribution: 'Records: <a href="https://www.gbif.org">GBIF.org</a>' });
-      this.map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-opacity': r.mode === 'then' || r.mode === 'b' ? 0.75 : 0.8, 'raster-fade-duration': 150 } }, 'borders');
-      this.rangeLayers.push(id);
+      const opacity = r.mode === 'then' || r.mode === 'b' ? 0.75 : 0.8;
+      for (const [part, squareSize, zooms] of [['far', 32, { maxzoom: RANGE_NEAR }], ['near', 64, { minzoom: RANGE_NEAR }]] as const) {
+        const id = `rng-${i}-${part}`;
+        this.map.addSource(id, { type: 'raster', tiles: [gbifTiles(filter, RANGE_STYLE[r.mode], squareSize)], tileSize: 256, maxzoom: 10, attribution: 'Records: <a href="https://www.gbif.org">GBIF.org</a>' });
+        this.map.addLayer({ id, type: 'raster', source: id, ...zooms, paint: { 'raster-opacity': opacity, 'raster-fade-duration': 150 } }, 'borders');
+        this.rangeLayers.push(id);
+      }
     });
   }
   private rangeLayers: string[] = [];
