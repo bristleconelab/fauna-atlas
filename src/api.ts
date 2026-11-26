@@ -254,9 +254,12 @@ export function licenceShort(text: string): string {
   return ['CC BY', nc && 'NC', nd ? 'ND' : sa && 'SA'].filter(Boolean).join('-');
 }
 
-/** GBIF density map tiles (raster hexagons), for a species, a period or all animals. */
-export function gbifTiles(filter: Record<string, string | number>, style = 'classic-noborder.poly', hexPerTile = 40): string {
-  return `https://api.gbif.org/v2/map/occurrence/density/{z}/{x}/{y}@1x.png?${qs({ srs: 'EPSG:3857', bin: 'hex', hexPerTile, style, ...filter })}`;
+/** GBIF density map tiles, for a species, a period or all animals. Square cells, not hexagons: a power-of-two square
+ *  grid nests from one zoom to the next, so the globe (which mixes tile zooms across the view) shows no cut cells at
+ *  tile edges. `squareSize` is in GBIF's 4096-unit tile space (64 = 8 px of the 512-px tile, 4 px on screen; near the
+ *  poles the globe shows lower-zoom tiles, so cells there come out bigger). */
+export function gbifTiles(filter: Record<string, string | number>, style = 'classic-noborder.poly', squareSize = 64): string {
+  return `https://api.gbif.org/v2/map/occurrence/density/{z}/{x}/{y}@1x.png?${qs({ srs: 'EPSG:3857', bin: 'square', squareSize, style, ...filter })}`;
 }
 
 // ---------- MiCO (stored, see scripts/build_mico.mjs; keyed by WoRMS id, matched here by scientific name) ----------

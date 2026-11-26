@@ -322,7 +322,7 @@ export class Panel {
     const tools = h('section', { class: 'tools' });
     const journeys = h('div', { class: 'journeys-mount' });
     const links = h('p', { class: 'links' });
-    const rangeNote = h('p', { class: 'fine', text: L('Coloured hexagons on the globe: where it has been recorded (GBIF).', 'Globusdagi rangli oltiburchaklar: u qayd etilgan joylar (GBIF).') });
+    const rangeNote = h('p', { class: 'fine', text: L('Coloured squares on the globe: where it has been recorded (GBIF).', 'Globusdagi rangli kvadratchalar: u qayd etilgan joylar (GBIF).') });
     status.hidden = true;
     this.body.append(...[nav, figure, name, latin, lineage, status, about, rangeNote, facts, bodyBox, vertical, tools, journeys, links].filter((x): x is HTMLElement => !!x));
 

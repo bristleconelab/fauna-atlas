@@ -1,11 +1,12 @@
 // The globe: NASA Blue Marble imagery with borders and place names on top, plus overlays: GBIF record density for all
-// animals, the clicked square, species ranges as GBIF hexagon tiles, and the MiCO migration network of sea animals.
+// animals, the clicked square, species ranges as GBIF square-grid tiles, and the MiCO migration network of sea animals.
 import * as maplibregl from 'maplibre-gl';
 import type { ExpressionSpecification, GeoJSONSource, LayerSpecification, MapMouseEvent, StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { bboxRing, frameOf, type BBox } from './geo';
 import { gbifTiles } from './api';
+import { capped, registerPoleCaps } from './polecap';
 import { h, fmt, plural } from './dom';
 import { L } from './i18n';
 
@@ -21,7 +22,7 @@ const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: 
 export const AGE_COLORS = ['#5fc0b0', '#f2c94c', '#e07a5f', '#8e4fa0'];
 /** Range squares by period (then and now) or by species (side by side). */
 export const RANGE_COLORS = { then: '#b39ddb', now: '#f2c94c', both: '#f4f8f7', a: '#f2c94c', b: '#8ecbff' };
-/** GBIF map styles matching those colours (checked 2026-11-26: yellow-red hexagons, purple hexagons, blue dots). */
+/** GBIF map styles matching those colours (checked 2026-11-26: yellow-red squares, purple squares, blue dots). */
 const RANGE_STYLE = { all: 'classic-noborder.poly', then: 'purpleWhite.poly', now: 'classic-noborder.poly', a: 'classic-noborder.poly', b: 'blue.marker' };
 function COLORS_LOOKED() { return ['#2a1d5c', '#2f6f99', '#5fc0b0', '#c8ef9c', '#fff7c2']; }
 
@@ -81,7 +82,7 @@ function style(lang: string): StyleSpecification {
     },
     sources: {
       earth: {
-        type: 'raster', tiles: [GIBS], tileSize: 256, maxzoom: 8,
+        type: 'raster', tiles: [capped(GIBS)], tileSize: 256, maxzoom: 8,
         attribution: 'Imagery: NASA Blue Marble via <a href="https://earthdata.nasa.gov/gibs">GIBS</a>',
       },
       s2: {
@@ -134,6 +135,7 @@ function style(lang: string): StyleSpecification {
 }
 
 maplibregl.setWorkerUrl(workerUrl);
+registerPoleCaps();
 
 /** Layers a click asks about before it falls through to "life here". */
 const PICKABLE = ['heads', 'tracks', 'mico-sites', 'mico-routes', 'mico-links'];
@@ -206,7 +208,7 @@ export class Globe {
     (this.map.getSource('square') as GeoJSONSource).setData(data);
   }
 
-  /** Species ranges as GBIF hexagon tiles: one layer per entry (all years, before 1990, since 2010, or species a/b). */
+  /** Species ranges as GBIF square-grid tiles: one layer per entry (all years, before 1990, since 2010, or species a/b). */
   async showRanges(list: { key: number; mode: 'all' | 'then' | 'now' | 'a' | 'b' }[]) {
     await this.ready;
     for (const id of this.rangeLayers.splice(0)) { this.map.removeLayer(id); this.map.removeSource(id); }
@@ -216,8 +218,8 @@ export class Globe {
       const filter: Record<string, string | number> = { taxonKey: r.key };
       if (r.mode === 'then') filter.year = '1700,1989';
       if (r.mode === 'now') filter.year = `2010,${YEAR}`;
-      this.map.addSource(id, { type: 'raster', tiles: [gbifTiles(filter, RANGE_STYLE[r.mode], 24)], tileSize: 256, maxzoom: 10, attribution: 'Records: <a href="https://www.gbif.org">GBIF.org</a>' });
-      this.map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-opacity': r.mode === 'then' || r.mode === 'b' ? 0.75 : 0.85, 'raster-fade-duration': 150 } }, 'borders');
+      this.map.addSource(id, { type: 'raster', tiles: [gbifTiles(filter, RANGE_STYLE[r.mode], 64)], tileSize: 256, maxzoom: 10, attribution: 'Records: <a href="https://www.gbif.org">GBIF.org</a>' });
+      this.map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-opacity': r.mode === 'then' || r.mode === 'b' ? 0.75 : 0.8, 'raster-fade-duration': 150 } }, 'borders');
       this.rangeLayers.push(id);
     });
   }
@@ -246,8 +248,8 @@ export class Globe {
     await this.ready;
     const YEAR = new Date().getUTCFullYear();
     if (!this.map.getSource('looked-all')) {
-      this.map.addSource('looked-all', { type: 'raster', tiles: [gbifTiles({ taxonKey: 1 }, 'purpleYellow-noborder.poly', 60)], tileSize: 256, maxzoom: 10, attribution: 'Records: <a href="https://www.gbif.org">GBIF.org</a>' });
-      this.map.addSource('looked-recent', { type: 'raster', tiles: [gbifTiles({ taxonKey: 1, year: `${YEAR - 10},${YEAR}` }, 'green-noborder.poly', 60)], tileSize: 256, maxzoom: 10 });
+      this.map.addSource('looked-all', { type: 'raster', tiles: [gbifTiles({ taxonKey: 1 }, 'purpleYellow-noborder.poly', 64)], tileSize: 256, maxzoom: 10, attribution: 'Records: <a href="https://www.gbif.org">GBIF.org</a>' });
+      this.map.addSource('looked-recent', { type: 'raster', tiles: [gbifTiles({ taxonKey: 1, year: `${YEAR - 10},${YEAR}` }, 'green-noborder.poly', 64)], tileSize: 256, maxzoom: 10 });
       this.map.addLayer({ id: 'looked-all', type: 'raster', source: 'looked-all', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.8 } }, 'borders');
       this.map.addLayer({ id: 'looked-recent', type: 'raster', source: 'looked-recent', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.9 } }, 'borders');
     }

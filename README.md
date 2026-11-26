@@ -15,7 +15,7 @@ atlas of animal life on a 3D globe: land, rivers and lakes, sea and air.
   animal record.
 - One search box for animals (an everyday name in any language Wikidata knows, or a scientific name) and places
   (countries, cities, parks, lakes, mountains, seas: "Tashkent", "Serengeti", "Toshkent").
-- A species page shows where it has been recorded (GBIF hexagons), a photo, a Wikipedia summary in the reader's
+- A species page shows where it has been recorded (GBIF density squares), a photo, a Wikipedia summary in the reader's
   language, the Red List status, **from the deep sea to the mountains** (where along one vertical scale, from 11 km
   below the sea to 9 km above it, its records lie: the Alpine ibex mostly at 2,000–3,000 m), size, lifespan and a
   sound recording where Wikidata has them, records by month north and south of the equator, records by decade, and for
@@ -47,7 +47,7 @@ The site is static: no server, everything is fetched live by the browser from op
 | Question | Source |
 |---|---|
 | Which animals were recorded in this square | GBIF `occurrence/search` with `facet=speciesKey`: one request for all animals (with record counts per class and phylum, so the count and completeness show at once), then one per kind of animal that is there (class or phylum keys of the GBIF backbone), so the kind comes with the answer; when every record belongs to a known kind, the biggest kind is what the others leave over and is not asked; animals only, clean coordinates, `occurrenceStatus=PRESENT` |
-| Where a species has been recorded, where people looked | GBIF map API density tiles (hexagons); `year=` for then and now and for the last ten years |
+| Where a species has been recorded, where people looked | GBIF map API density tiles (square cells, which nest from one zoom to the next, so the globe shows no cut cells where tile zooms meet); `year=` for then and now and for the last ten years |
 | Height and depth | one GBIF request per species faceting its distinct `elevation` and `depth` values, binned into nine zones (one count per zone if a facet list is cut); the text gives the middle half of the records; depth starts at 0.5 m because many land datasets fill `depth = 0` |
 | Months and decades | GBIF `month` facets north and south of the equator, `year` facet |
 | Search | GBIF `species/search` and `species/suggest` (backbone, animals), Wikidata `wbsearchentities` mapped to GBIF keys through P846, Photon (OpenStreetMap) for places; ranked by exact name, then by GBIF record count (one facet request) |

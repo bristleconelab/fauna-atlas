@@ -93,3 +93,18 @@ describe('commons thumbnails', () => {
     expect(commonsThumbs('clip.webm', 120)).toHaveLength(1);
   });
 });
+
+import { capWeight, fadeRows } from '../src/polecap';
+describe('capWeight', () => {
+  it('is full cap colour on the pole-side row and fades to the imagery over the fade rows', () => {
+    expect(capWeight(0, 256, 'top')).toBe(1);
+    expect(capWeight(6, 256, 'top')).toBeCloseTo(0.5);
+    expect(capWeight(12, 256, 'top')).toBe(0);
+    expect(capWeight(255, 256, 'bottom')).toBe(1);
+    expect(capWeight(100, 256, 'bottom')).toBe(0);
+  });
+  it('keeps the fade about the same width in latitude at every zoom', () => {
+    expect([0, 1, 2, 3, 4, 5].map((z) => fadeRows(z))).toEqual([12, 24, 48, 96, 192, 256]);
+    expect(fadeRows(1, 512)).toBe(48);
+  });
+});

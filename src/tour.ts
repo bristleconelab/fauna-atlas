@@ -16,8 +16,8 @@ interface Stop { title: string; text: string; go: (h: TourHost) => void }
 
 export const STOPS: Stop[] = [
   { title: L('Where people have looked for animals', 'Odamlar hayvonlarni qayerda izlagan'),
-    text: L('Every coloured hexagon holds GBIF records of animals; the brighter, the more. Europe and North America glow because millions of people record birds there; much of Africa, Central Asia and the Amazon stays dark. A short list usually means few people looked, not that few animals live there.',
-      'Har bir rangli oltiburchakda hayvonlarning GBIF yozuvlari bor; qanchalik yorqin boʻlsa, shunchalik koʻp. Yevropa va Shimoliy Amerika millionlab odam qush qayd etgani uchun porlaydi; Afrika, Markaziy Osiyo va Amazonkaning katta qismi qorongʻi. Qisqa roʻyxat odatda kam hayvonni emas, kam odam qaraganini bildiradi.'),
+    text: L('Every coloured square holds GBIF records of animals; the brighter, the more. Europe and North America glow because millions of people record birds there; much of Africa, Central Asia and the Amazon stays dark. A short list usually means few people looked, not that few animals live there.',
+      'Har bir rangli kvadratchada hayvonlarning GBIF yozuvlari bor; qanchalik yorqin boʻlsa, shunchalik koʻp. Yevropa va Shimoliy Amerika millionlab odam qush qayd etgani uchun porlaydi; Afrika, Markaziy Osiyo va Amazonkaning katta qismi qorongʻi. Qisqa roʻyxat odatda kam hayvonni emas, kam odam qaraganini bildiradi.'),
     go: (x) => { x.closePanel(); x.layer('records'); x.globe(20, 25, 1.4); } },
   { title: L('The Serengeti', 'Serengeti'),
     text: L('Wildebeest, zebras, lions and more than five hundred kinds of birds. Use the chips to see one kind of animal at a time.',
@@ -40,8 +40,8 @@ export const STOPS: Stop[] = [
       '1990 gacha boʻlgan yozuvlarni binafsha va 2010 dan keyingilarini sariq rangda koʻrish uchun "Oldin va hozir"ni bosing. Nima oʻzgarganini oʻylang: ayiqlarmi yoki odamlar izlagan joylarmi.'),
     go: (x) => { x.layer(false); x.species(2433451); } },
   { title: L('Ground nobody has looked at for ten years', 'Oʻn yildan beri hech kim qaramagan joylar'),
-    text: L('Green hexagons have animal records from the last ten years; grey ones only older records. Grey ground is where the next naturalist will find the most news.',
-      'Yashil oltiburchaklarda oxirgi oʻn yildagi hayvon yozuvlari bor; kulranglarida faqat eski yozuvlar. Kulrang joylar keyingi tabiatshunos eng koʻp yangilik topadigan joy.'),
+    text: L('Green squares have animal records from the last ten years; grey ones only older records. Grey ground is where the next naturalist will find the most news.',
+      'Yashil kvadratchalarda oxirgi oʻn yildagi hayvon yozuvlari bor; kulranglarida faqat eski yozuvlar. Kulrang joylar keyingi tabiatshunos eng koʻp yangilik topadigan joy.'),
     go: (x) => { x.closePanel(); x.layer('age'); x.globe(60, 30, 1.4); } },
 ];
 
