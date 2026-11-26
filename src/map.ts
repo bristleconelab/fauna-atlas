@@ -24,7 +24,7 @@ export const AGE_COLORS = ['#5fc0b0', '#f2c94c', '#e07a5f', '#8e4fa0'];
 export const RANGE_COLORS = { then: '#b39ddb', now: '#f2c94c', both: '#f4f8f7', a: '#f2c94c', b: '#8ecbff' };
 /** GBIF map styles matching those colours (checked 2026-11-26: yellow-red squares, purple squares, blue dots). */
 const RANGE_STYLE = { all: 'classic-noborder.poly', then: 'purpleWhite.poly', now: 'classic-noborder.poly', a: 'classic-noborder.poly', b: 'blue.marker' };
-/** Map zoom from which the range cells are drawn at full size (see showRanges). */
+/** Map zoom from which range and survey cells are drawn at full size (see showRanges). */
 const RANGE_NEAR = 4;
 function COLORS_LOOKED() { return ['#2a1d5c', '#2f6f99', '#5fc0b0', '#c8ef9c', '#fff7c2']; }
 
@@ -255,16 +255,22 @@ export class Globe {
   async setLooked(on: boolean, mode: 'records' | 'age' = 'records') {
     await this.ready;
     const YEAR = new Date().getUTCFullYear();
-    if (!this.map.getSource('looked-all')) {
-      this.map.addSource('looked-all', { type: 'raster', tiles: [gbifTiles({ taxonKey: 1 }, 'purpleYellow-noborder.poly', 64)], tileSize: 256, maxzoom: 10, attribution: 'Records: <a href="https://www.gbif.org">GBIF.org</a>' });
-      this.map.addSource('looked-recent', { type: 'raster', tiles: [gbifTiles({ taxonKey: 1, year: `${YEAR - 10},${YEAR}` }, 'green-noborder.poly', 64)], tileSize: 256, maxzoom: 10 });
-      this.map.addLayer({ id: 'looked-all', type: 'raster', source: 'looked-all', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.8 } }, 'borders');
-      this.map.addLayer({ id: 'looked-recent', type: 'raster', source: 'looked-recent', layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.9 } }, 'borders');
+    // like the ranges (showRanges): half-size cells below RANGE_NEAR, so zoomed out the cells do not grow into blocks
+    const parts = [['far', 32, { maxzoom: RANGE_NEAR }], ['near', 64, { minzoom: RANGE_NEAR }]] as const;
+    if (!this.map.getSource('looked-all-near')) {
+      for (const [part, squareSize, zooms] of parts) {
+        this.map.addSource(`looked-all-${part}`, { type: 'raster', tiles: [gbifTiles({ taxonKey: 1 }, 'purpleYellow-noborder.poly', squareSize)], tileSize: 256, maxzoom: 10, attribution: 'Records: <a href="https://www.gbif.org">GBIF.org</a>' });
+        this.map.addSource(`looked-recent-${part}`, { type: 'raster', tiles: [gbifTiles({ taxonKey: 1, year: `${YEAR - 10},${YEAR}` }, 'green-noborder.poly', squareSize)], tileSize: 256, maxzoom: 10 });
+        this.map.addLayer({ id: `looked-all-${part}`, type: 'raster', source: `looked-all-${part}`, ...zooms, layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.8 } }, 'borders');
+        this.map.addLayer({ id: `looked-recent-${part}`, type: 'raster', source: `looked-recent-${part}`, ...zooms, layout: { visibility: 'none' }, paint: { 'raster-opacity': 0.9 } }, 'borders');
+      }
     }
-    this.map.setLayoutProperty('looked-all', 'visibility', on ? 'visible' : 'none');
-    this.map.setLayoutProperty('looked-recent', 'visibility', on && mode === 'age' ? 'visible' : 'none');
-    this.map.setPaintProperty('looked-all', 'raster-saturation', mode === 'age' ? -1 : 0);
-    this.map.setPaintProperty('looked-all', 'raster-opacity', mode === 'age' ? 0.35 : 0.8);
+    for (const [part] of parts) {
+      this.map.setLayoutProperty(`looked-all-${part}`, 'visibility', on ? 'visible' : 'none');
+      this.map.setLayoutProperty(`looked-recent-${part}`, 'visibility', on && mode === 'age' ? 'visible' : 'none');
+      this.map.setPaintProperty(`looked-all-${part}`, 'raster-saturation', mode === 'age' ? -1 : 0);
+      this.map.setPaintProperty(`looked-all-${part}`, 'raster-opacity', mode === 'age' ? 0.35 : 0.8);
+    }
   }
 
   async flyTo(lon: number, lat: number, zoom?: number) {
