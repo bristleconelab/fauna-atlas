@@ -2,17 +2,50 @@
 // Wikidata, whether a range has moved, and how two ranges overlap. Pure (test/science.test.ts).
 import { cellAreaKm2, type BBox } from './geo';
 
-/** Bias-corrected Chao1 richness estimate from records per species (Chao 1987; Chao et al. 2005):
- *  S_obs + f1 (f1 - 1) / (2 (f2 + 1)), f1 = species seen once, f2 = twice. Records stand in for individuals, so this is
- *  an inventory-completeness index (how many more species more looking would probably turn up), not a census. */
-export function chao1(records: number[]): { observed: number; estimate: number; completeness: number; f1: number; f2: number } | null {
-  const counts = records.filter((n) => n > 0);
+export interface Chao1 {
+  observed: number; n: number; f1: number; f2: number;
+  /** bias-corrected Chao1: a lower bound for the number of species, not a total */
+  estimate: number; lower: number; upper: number;
+  /** observed / estimate */
+  completeness: number;
+  /** Chao & Jost (2012) sample coverage: share of the records' "individuals" that belong to species already found */
+  coverage: number;
+}
+
+/** Bias-corrected Chao1 from records per species (Chao 1987; Chao 2005; Chao & Jost 2012), with
+ *    estimate = S_obs + ((n-1)/n) f1 (f1-1) / (2 (f2+1)),
+ *    its variance (Chao 2005, bias-corrected form) and the log-normal 95 % interval
+ *    [S_obs + T/K, S_obs + T K], T = estimate - S_obs, K = exp(1.96 sqrt(ln(1 + var/T^2))),
+ *    sample coverage C = 1 - (f1/n) ((n-1) f1 / ((n-1) f1 + 2 f2))   (f2 = 0: f1-1 and 2 in place of f1 and 2 f2).
+ *  f1 = species recorded once, f2 = twice, n = records. Records stand in for individuals (records of one sighting
+ *  cluster), so read it as an index of how well a place is known. Only meaningful within one kind of animal: mixing
+ *  well-watched birds with barely-watched insects lets the birds hide the insects' gap. Pure (test/science.test.ts). */
+export function chao1(records: number[], minSpecies = 10): Chao1 | null {
+  const counts = records.filter((x) => x > 0);
   const observed = counts.length;
-  if (observed < 20) return null;
-  let f1 = 0, f2 = 0;
-  for (const n of counts) { if (n === 1) f1++; else if (n === 2) f2++; }
-  const estimate = observed + (f1 * (f1 - 1)) / (2 * (f2 + 1));
-  return { observed, estimate, completeness: observed / estimate, f1, f2 };
+  if (observed < minSpecies) return null;
+  let f1 = 0, f2 = 0, n = 0;
+  for (const x of counts) { n += x; if (x === 1) f1++; else if (x === 2) f2++; }
+  const A = (n - 1) / n;
+  const T = (A * f1 * (f1 - 1)) / (2 * (f2 + 1));
+  const estimate = observed + T;
+  const v = A * f1 * (f1 - 1) / (2 * (f2 + 1)) + (A * A * f1 * (2 * f1 - 1) ** 2) / (4 * (f2 + 1) ** 2) + (A * A * f1 * f1 * f2 * (f1 - 1) ** 2) / (4 * (f2 + 1) ** 4);
+  let lower = observed, upper = observed;
+  if (T > 0) {
+    const K = Math.exp(1.96 * Math.sqrt(Math.log(1 + v / (T * T))));
+    lower = observed + T / K; upper = observed + T * K;
+  }
+  const coverage = f1 === 0 ? 1 : f2 > 0
+    ? 1 - (f1 / n) * (((n - 1) * f1) / ((n - 1) * f1 + 2 * f2))
+    : 1 - (f1 / n) * (((n - 1) * (f1 - 1)) / ((n - 1) * (f1 - 1) + 2));
+  return { observed, n, f1, f2, estimate, lower, upper, completeness: observed / estimate, coverage };
+}
+
+/** "8 months" / "3 years" / "1 year": short lives in months, so a mayfly does not live "0 years". */
+export function formatLife(years: number, lang: 'en' | 'uz'): string {
+  if (years < 1) { const m = Math.max(1, Math.round(years * 12)); return lang === 'uz' ? `${m} oy` : `${m} month${m === 1 ? '' : 's'}`; }
+  const y = Math.round(years);
+  return lang === 'uz' ? `${y.toLocaleString('en-US')} yil` : `${y.toLocaleString('en-US')} year${y === 1 ? '' : 's'}`;
 }
 
 // ---------- body size and lifespan from Wikidata quantities ----------

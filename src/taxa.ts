@@ -15,6 +15,10 @@ export type GroupId =
   | 'mammals' | 'birds' | 'reptiles' | 'amphibians' | 'fish' | 'sharks' | 'insects' | 'spiders' | 'crustaceans'
   | 'molluscs' | 'corals' | 'echinoderms' | 'worms' | 'other';
 
+/** Records of living animals in the wild: everything but fossils (megalodon, mammoths) and zoo or aquarium animals
+ *  (LIVING_SPECIMEN). Lists, counts, map tiles and the static pages all take this filter, so they agree. */
+export const WILD_BASIS = ['HUMAN_OBSERVATION', 'MACHINE_OBSERVATION', 'OBSERVATION', 'PRESERVED_SPECIMEN', 'MATERIAL_SAMPLE', 'MATERIAL_CITATION', 'OCCURRENCE'];
+
 type Filter = Record<string, (string | number)[]>;
 /** Ray-finned fish orders that sit straight under phylum Chordata in the GBIF backbone: it has a class Actinopterygii
  *  (key 204) but no record points to it (checked 2026-11-26: 0 records with classKey 204; carp is Chordata >
@@ -25,22 +29,24 @@ export const FISH_ORDERS = [
   1107, 1105,
 ];
 /** In this order on the chips and in the mixed view. `gbif` is the occurrence-search filter for the group
- *  (GBIF backbone keys, checked 2026-11-26: the backbone has no class Reptilia, so its three orders-as-classes; fish
- *  are a `taxonKey` list, which GBIF ORs across ranks, because most of them have an order but no class). */
+ *  (GBIF backbone keys, checked 2026-11-26: the backbone has no class Reptilia, so its orders-as-classes and the
+ *  tuatara's Sphenodontia; crustaceans are seven classes, worms three phyla (ringed, round and flat); fish
+ *  are a `taxonKey` list, which GBIF ORs across ranks, because most of them have an order but no class; the
+ *  coelacanth and lungfish classes are in it too). */
 export const GROUPS: { id: GroupId; label: string; uz: string; gbif?: Filter }[] = [
   { id: 'mammals', label: 'Mammals', uz: 'Sutemizuvchilar', gbif: { classKey: [359] } },
   { id: 'birds', label: 'Birds', uz: 'Qushlar', gbif: { classKey: [212] } },
-  { id: 'reptiles', label: 'Reptiles', uz: 'Sudralib yuruvchilar', gbif: { classKey: [11592253, 11418114, 11493978] } },
+  { id: 'reptiles', label: 'Reptiles', uz: 'Sudralib yuruvchilar', gbif: { classKey: [11592253, 11418114, 11493978, 11569602] } },
   { id: 'amphibians', label: 'Frogs, toads and salamanders', uz: 'Baqalar va salamandralar', gbif: { classKey: [131] } },
-  { id: 'fish', label: 'Fish', uz: 'Baliqlar', gbif: { taxonKey: [204, 238, 119, 11881065, ...FISH_ORDERS] } },
+  { id: 'fish', label: 'Fish', uz: 'Baliqlar', gbif: { taxonKey: [204, 238, 119, 11881065, 11733052, 11500725, ...FISH_ORDERS] } },
   { id: 'sharks', label: 'Sharks and rays', uz: 'Akulalar va skatlar', gbif: { classKey: [121, 120] } },
   { id: 'insects', label: 'Insects', uz: 'Hasharotlar', gbif: { classKey: [216] } },
   { id: 'spiders', label: 'Spiders, scorpions and mites', uz: 'Oʻrgimchaklar, chayonlar va kanalar', gbif: { classKey: [367] } },
-  { id: 'crustaceans', label: 'Crabs, shrimp and woodlice', uz: 'Qisqichbaqalar, krevetkalar va zaxkashlar', gbif: { classKey: [229] } },
+  { id: 'crustaceans', label: 'Crabs, shrimp, woodlice and other crustaceans', uz: 'Qisqichbaqalar, krevetkalar va boshqa qisqichbaqasimonlar', gbif: { classKey: [229, 281, 353, 203, 11545536, 235, 236] } },
   { id: 'molluscs', label: 'Snails, shells, squid and octopus', uz: 'Shilliqqurtlar, chigʻanoqlar, kalmarlar va sakkizoyoqlar', gbif: { phylumKey: [52] } },
   { id: 'corals', label: 'Corals and jellyfish', uz: 'Marjonlar va meduzalar', gbif: { phylumKey: [43] } },
   { id: 'echinoderms', label: 'Starfish and urchins', uz: 'Dengiz yulduzlari va tipratikanlari', gbif: { phylumKey: [50] } },
-  { id: 'worms', label: 'Earthworms, leeches and sea worms', uz: 'Yomgʻir chuvalchanglari, zuluklar va dengiz chuvalchanglari', gbif: { phylumKey: [42] } },
+  { id: 'worms', label: 'Worms and leeches', uz: 'Chuvalchanglar va zuluklar', gbif: { phylumKey: [42, 5967481, 108] } },
   { id: 'other', label: 'Everything else', uz: 'Boshqalar' },
 ];
 /** Every backbone key that defines a group, whatever its rank (class, order or phylum): keys are unique across ranks. */
@@ -50,13 +56,17 @@ export const groupKeys = (g: (typeof GROUPS)[number]): number[] => Object.values
  *  and phylum key (one map: keys are unique across ranks). Groups with no records there are not asked. When every
  *  record falls in some group (nothing for "other") and the all-animals species list is complete, the biggest group
  *  is not asked either: its species are the ones no other group returned (`rest`). Groups are disjoint, so "record
- *  counts add up to the total" means every species belongs to one of them. Pure (test/taxa.test.ts). */
-export function planGroups(total: number, counts: Map<number, number>, complete: boolean): { ask: GroupId[]; rest: GroupId } {
+ *  counts add up to the total" means every species belongs to one of them. `asked`: groups already requested, never
+ *  the one left to subtraction. Pure (test/taxa.test.ts). */
+export function planGroups(total: number, counts: Map<number, number>, complete: boolean, asked: GroupId[] = []): { ask: GroupId[]; rest: GroupId } {
   const present = GROUPS.filter((g) => g.gbif).map((g) => ({ id: g.id, n: groupKeys(g).reduce((a, k) => a + (counts.get(k) ?? 0), 0) }))
     .filter((g) => g.n > 0);
   const inGroups = present.reduce((a, g) => a + g.n, 0);
   if (!complete || !present.length || inGroups !== total) return { ask: present.map((g) => g.id), rest: 'other' };
-  const biggest = present.reduce((a, b) => (b.n > a.n ? b : a));
+  // the group left to subtraction must be one not requested already (birds and mammals go out early)
+  const open = present.filter((g) => !asked.includes(g.id));
+  if (!open.length) return { ask: present.map((g) => g.id), rest: 'other' };
+  const biggest = open.reduce((a, b) => (b.n > a.n ? b : a));
   return { ask: present.filter((g) => g !== biggest).map((g) => g.id), rest: biggest.id };
 }
 
@@ -117,7 +127,18 @@ export function interleaveGroups<T extends Taxon>(ranked: T[]): T[] {
 /** A histogram bin of values in [from, to). */
 export interface Bin { from: number; to: number; records: number }
 
-/** Record-weighted quantile inside explicit bins, interpolated linearly. */
+/** Record-weighted quantile of exact values: the smallest value at or below which a share q of the records lie. */
+export function weightedQuantile(values: [number, number][], q: number): number | null {
+  const s = values.filter(([, n]) => n > 0).sort((a, b) => a[0] - b[0]);
+  const total = s.reduce((t, [, n]) => t + n, 0);
+  if (!total) return null;
+  const target = Math.min(1, Math.max(0, q)) * total;
+  let acc = 0;
+  for (const [v, n] of s) { acc += n; if (acc >= target) return v; }
+  return s[s.length - 1][0];
+}
+
+/** Record-weighted quantile inside explicit bins, interpolated linearly (only when the exact values are not known). */
 export function binnedQuantile(bins: Bin[], q: number): number | null {
   const s = bins.filter((b) => b.records > 0).sort((a, b) => a.from - b.from);
   const total = s.reduce((t, b) => t + b.records, 0);
@@ -138,7 +159,8 @@ export const ZONES: { from: number; to: number; en: string; uz: string; param: '
   { from: 3000, to: 4500, en: '3,000–4,500 m', uz: '3 000–4 500 m', param: 'elevation', range: [3000, 4500] },
   { from: 2000, to: 3000, en: '2,000–3,000 m', uz: '2 000–3 000 m', param: 'elevation', range: [2000, 3000] },
   { from: 1000, to: 2000, en: '1,000–2,000 m, hills and plateaus', uz: '1 000–2 000 m, adirlar va platolar', param: 'elevation', range: [1000, 2000] },
-  { from: 0, to: 1000, en: '0–1,000 m, lowlands', uz: '0–1 000 m, pasttekisliklar', param: 'elevation', range: [0, 1000] },
+  // from -500 m: land below sea level (the Caspian shore, the Dead Sea, polders) counts as lowland
+  { from: 0, to: 1000, en: 'Below 1,000 m, lowlands', uz: '1 000 m gacha, pasttekisliklar', param: 'elevation', range: [-500, 1000] },
   // from 0.5 m: many land datasets fill depth = 0, which would put elephants in the sea
   { from: -200, to: 0, en: 'Sea, 0–200 m, sunlit', uz: 'Dengiz, 0–200 m, yorugʻ qatlam', param: 'depth', range: [0.5, 200] },
   { from: -1000, to: -200, en: 'Sea, 200–1,000 m, twilight', uz: 'Dengiz, 200–1 000 m, gʻira-shira', param: 'depth', range: [200, 1000] },
@@ -148,6 +170,15 @@ export const ZONES: { from: number; to: number; en: string; uz: string; param: '
 
 /** Records per zone (ZONES order) from GBIF facet counts of distinct elevation and depth values. A value on a zone
  *  edge goes to the first zone that holds it, so it is counted once. */
+/** Exact heights (+) and depths (-) in metres with their record counts, from GBIF facets; depth starts at 0.5 m
+ *  (many land datasets fill depth = 0). Pure. */
+export function signedHeights(elevation: { name: string; count: number }[], depth: { name: string; count: number }[]): [number, number][] {
+  return [
+    ...elevation.map((x) => [Number(x.name), x.count] as [number, number]).filter(([v]) => Number.isFinite(v) && v >= -500 && v <= 9000),
+    ...depth.map((x) => [-Number(x.name), x.count] as [number, number]).filter(([v]) => Number.isFinite(v) && v <= -0.5 && v >= -11000),
+  ];
+}
+
 export function zoneCounts(elevation: { name: string; count: number }[], depth: { name: string; count: number }[]): number[] {
   const out = ZONES.map(() => 0);
   for (const [param, list] of [['elevation', elevation], ['depth', depth]] as const) {
@@ -161,10 +192,17 @@ export function zoneCounts(elevation: { name: string; count: number }[], depth: 
 }
 
 /** "Usually between 200 and 1,800 m above sea level": the middle half of records with a height or depth. */
-export function verticalRange(counts: number[]): { from: number; to: number; records: number } | null {
-  const bins: Bin[] = ZONES.map((z, i) => ({ from: z.from, to: z.to, records: counts[i] ?? 0 }));
-  const records = bins.reduce((t, b) => t + b.records, 0);
-  const lo = binnedQuantile(bins, 0.25), hi = binnedQuantile(bins, 0.75);
+export function verticalRange(counts: number[], values?: [number, number][] | null): { from: number; to: number; records: number } | null {
+  let lo: number | null, hi: number | null, records: number;
+  if (values?.length) {
+    // the exact heights and depths GBIF faceted: no interpolation inside 1,000-7,000 m zones
+    records = values.reduce((t, [, n]) => t + n, 0);
+    lo = weightedQuantile(values, 0.25); hi = weightedQuantile(values, 0.75);
+  } else {
+    const bins: Bin[] = ZONES.map((z, i) => ({ from: z.from, to: z.to, records: counts[i] ?? 0 }));
+    records = bins.reduce((t, b) => t + b.records, 0);
+    lo = binnedQuantile(bins, 0.25); hi = binnedQuantile(bins, 0.75);
+  }
   if (lo == null || hi == null || records < 10) return null;
   const r = (v: number) => (Math.abs(v) < 100 ? Math.round(v / 5) * 5 : Math.abs(v) < 1000 ? Math.round(v / 10) * 10 : Math.round(v / 100) * 100);
   return { from: r(lo), to: r(hi), records };

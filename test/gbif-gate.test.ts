@@ -46,4 +46,12 @@ describe('GBIF request gate', () => {
     expect(order.slice(firstHigh, firstHigh + 2)).toEqual(['high0', 'high1']);
     expect(firstHigh).toBeLessThan(order.indexOf('low5'));
   }, 15000);
+
+  it('pauses on a 503 as on a 429 instead of retrying at once', async () => {
+    let n = 0; const times: number[] = []; const t0 = Date.now();
+    vi.stubGlobal('fetch', async () => { times.push(Date.now() - t0); return n++ === 0 ? new Response('', { status: 503, headers: { 'retry-after': '1' } }) : new Response('{"count":2}'); });
+    const r = await getJSON<{ count: number }>(url('busy'), { noCache: true });
+    expect(r.count).toBe(2);
+    expect(times[1] - times[0]).toBeGreaterThanOrEqual(950);
+  }, 15000);
 });

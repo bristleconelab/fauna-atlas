@@ -28,11 +28,13 @@ export function registerPoleCaps() {
     const m = /\/(\d+)\/(\d+)\/(\d+)\.(?:jpe?g|png)$/.exec(url); // .../{z}/{y}/{x}.jpeg
     const z = Number(m?.[1]), y = Number(m?.[2]);
     const edge = !m ? null : y === 0 ? 'top' : y === 2 ** z - 1 ? 'bottom' : null;
-    if (!edge) return { data: await res.arrayBuffer() };
+    // no OffscreenCanvas (Safari before 16.4): the tile as it is, a pinwheel at the pole rather than a hole
+    if (!edge || typeof OffscreenCanvas === 'undefined') return { data: await res.arrayBuffer() };
     const bmp = await createImageBitmap(await res.blob());
     const c = new OffscreenCanvas(bmp.width, bmp.height);
     const g = c.getContext('2d')!;
     g.drawImage(bmp, 0, 0);
+    bmp.close();
     const fade = fadeRows(z, bmp.height);
     const rows = edge === 'top' ? [0, fade] : [bmp.height - fade, bmp.height];
     const img = g.getImageData(0, rows[0], bmp.width, rows[1] - rows[0]);

@@ -13,21 +13,22 @@
 
 </div>
 
-![The Serengeti: 1,934 animal species recorded, about 72 % of those likely there](docs/img/life-here.jpg)
+![The Serengeti: 1,934 animal species recorded, and how well each kind of animal is known](docs/img/life-here.jpg)
 
 An open atlas of animal life on a 3D globe, built on [GBIF](https://www.gbif.org) and [Wikidata](https://www.wikidata.org).
 
 - **Who lives here.** Click a spot to list the animals recorded in a square about 150 km across, with photos and
   everyday names, filtered by kind: mammals, birds, reptiles, frogs, fish, insects, spiders, molluscs and more.
-- **How well is it known.** An estimate of how complete the list probably is, and when someone last looked. The
-  Serengeti: 1,934 species recorded, about 72 % of the ~2,670 that more looking would likely find.
+- **How well is it known.** For each kind of animal, the species recorded and a Chao1 lower bound for how many live
+  there, with a 95 % interval and the sample coverage, and when someone last looked. The Serengeti: 700 bird species
+  recorded of at least 767 (736–827); spiders too patchily recorded to judge.
 - **Any animal.** Search by everyday name in any language Wikidata knows, or by scientific name: where it has been
   recorded, its Red List status, how high or deep it lives, when in the year it is seen, size, lifespan and voice.
 - **Where people have looked.** All ~2.8 billion animal records in GBIF on one globe, or where nobody has recorded an
   animal for ten years.
 - **Compare and share.** Two species side by side, then-and-now maps, a CSV of any square's list and a link for every
   place and species. English and Uzbek.
-- **A page for each of 2,999 animals and 250 countries and territories.** [The best-known animals](https://fauna.bristleconelab.org/animals/)
+- **A page for each of 2,998 animals and 250 countries and territories.** [The best-known animals](https://fauna.bristleconelab.org/animals/)
   (photo, summary, Red List, a map of records, the countries they are recorded in) and [animals by country](https://fauna.bristleconelab.org/places/),
   plain pages that search engines read, each opening into the globe.
 
@@ -53,7 +54,8 @@ Everything is fetched live by the browser from open services; the site has no se
 | Imagery | NASA Blue Marble (GIBS), Sentinel-2 cloudless 2016 by EOX | public domain, CC BY 4.0 |
 
 A species list records what was found, not a census: birds are recorded millions of times a year, most insects never,
-so a short list usually means few people looked. GBIF coarsens the positions of species at risk from poachers.
+so a short list usually means few people looked. Fossils and zoo animals are left out; country lists count only
+sightings in the wild. GBIF coarsens the positions of species at risk from poachers.
 
 ## Related
 

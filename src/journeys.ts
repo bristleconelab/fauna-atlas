@@ -1,5 +1,5 @@
 // Species-page sections about movement and time:
-//   "How it travels"      MiCO migration network for sea animals (stored; matched by scientific name)
+//   "How it travels"      MiCO migration network for sea animals (stored; matched by scientific name or a GBIF synonym)
 //   "When it is recorded"  records by month north and south of the equator, and by decade (GBIF facets)
 import * as api from './api';
 import { h, fmt, plural } from './dom';
@@ -52,7 +52,8 @@ export function monthsFromFacet(f: { name: string; count: number }[]): number[] 
   return m;
 }
 
-export interface JourneyOpts { id: number; commonName: string; sci: string; signal: AbortSignal }
+/** `names`: other scientific names of the species (GBIF synonyms): MiCO follows WoRMS, which may file it under one. */
+export interface JourneyOpts { id: number; commonName: string; sci: string; names?: string[]; signal: AbortSignal }
 
 export function renderJourneys(o: JourneyOpts, mount: HTMLElement, host: JourneyHost, alive: () => boolean): () => void {
   let stopped = false;
@@ -64,7 +65,8 @@ export function renderJourneys(o: JourneyOpts, mount: HTMLElement, host: Journey
 
   // ---- MiCO, for the 109 sea animals it covers ----
   api.micoIndex(host.base).then(async (idx) => {
-    const hit = Object.entries(idx.species).find(([, m]) => m.scientific.toLowerCase() === o.sci.toLowerCase());
+    const names = new Set([o.sci, ...(o.names ?? [])].map((x) => x.toLowerCase()));
+    const hit = Object.entries(idx.species).find(([, m]) => names.has(m.scientific.toLowerCase()));
     if (!hit || !ok()) return;
     const [wormsId] = hit;
     const d = await api.micoSpecies(host.base, Number(wormsId));
@@ -93,7 +95,8 @@ export function renderJourneys(o: JourneyOpts, mount: HTMLElement, host: Journey
   // ---- seasons and decades ----
   Promise.all([
     api.gbifFacet({ taxonKey: o.id, decimalLatitude: '0,90' }, 'month', 12, o.signal).catch(() => []),
-    api.gbifFacet({ taxonKey: o.id, decimalLatitude: '-90,0' }, 'month', 12, o.signal).catch(() => []),
+    // the equator (0) counts once, as north
+    api.gbifFacet({ taxonKey: o.id, decimalLatitude: '-90,-0.000001' }, 'month', 12, o.signal).catch(() => []),
     api.gbifFacet({ taxonKey: o.id }, 'year', 400, o.signal).catch(() => []),
   ]).then(([n, s, y]) => {
     if (!ok()) return;

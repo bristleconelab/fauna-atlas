@@ -6,18 +6,27 @@ const W = (id: string) => ({ value: `http://www.wikidata.org/entity/${id}` });
 const V = (v: number) => ({ value: String(v) });
 
 describe('Chao1', () => {
-  it('matches the bias-corrected formula', () => {
-    // 20 species: 6 seen once, 4 twice, 10 often -> 20 + 6*5 / (2*5) = 23
-    const r = chao1([...Array(6).fill(1), ...Array(4).fill(2), ...Array(10).fill(50)])!;
-    expect(r.estimate).toBeCloseTo(23);
-    expect(r.completeness).toBeCloseTo(20 / 23);
-    expect(r.f1).toBe(6); expect(r.f2).toBe(4);
+  // 20 species: 6 recorded once, 4 twice, 10 fifty times; n = 514. Worked by hand (Chao 2005 variance, log-normal CI,
+  // Chao & Jost 2012 coverage): estimate 22.994, 95 % 20.50-37.92, coverage 0.9884.
+  const r = chao1([...Array(6).fill(1), ...Array(4).fill(2), ...Array(10).fill(50)])!;
+  it('matches the bias-corrected estimate, its interval and the sample coverage', () => {
+    expect(r.estimate).toBeCloseTo(22.994, 3);
+    expect(r.lower).toBeCloseTo(20.50, 2);
+    expect(r.upper).toBeCloseTo(37.92, 1);
+    expect(r.coverage).toBeCloseTo(0.9884, 4);
+    expect(r.completeness).toBeCloseTo(20 / 22.994, 3);
+    expect([r.f1, r.f2, r.n]).toEqual([6, 4, 514]);
   });
-  it('says nothing about tiny lists, and stays finite with no doubletons', () => {
+  it('says nothing about tiny lists, and is exact when no species is a singleton', () => {
     expect(chao1([1, 1, 2])).toBeNull();
-    const r = chao1(Array(25).fill(1))!;
-    expect(Number.isFinite(r.estimate)).toBe(true);
-    expect(r.estimate).toBe(25 + (25 * 24) / 2);
+    const full = chao1(Array(12).fill(5))!;
+    expect([full.estimate, full.lower, full.upper, full.coverage]).toEqual([12, 12, 12, 1]);
+  });
+  it('stays finite with singletons and no doubletons', () => {
+    const x = chao1(Array(25).fill(1))!;
+    expect(Number.isFinite(x.estimate) && Number.isFinite(x.upper)).toBe(true);
+    expect(x.estimate).toBeCloseTo(25 + (24 / 25) * (25 * 24) / 2);
+    expect(x.coverage).toBeLessThan(0.1);
   });
 });
 
@@ -55,5 +64,16 @@ describe('ranges', () => {
 describe('csv', () => {
   it('quotes commas, quotes and line breaks', () => {
     expect(toCsv([['a', 'b,c', 'say "hi"', null, 3]])).toBe('a,"b,c","say ""hi""",,3\r\n');
+  });
+});
+
+describe('formatLife', () => {
+  it('gives short lives in months, never "0 years"', async () => {
+    const { formatLife } = await import('../src/science');
+    expect(formatLife(0.25, 'en')).toBe('3 months');
+    expect(formatLife(0.02, 'en')).toBe('1 month');
+    expect(formatLife(1.2, 'en')).toBe('1 year');
+    expect(formatLife(47.5, 'en')).toBe('48 years');
+    expect(formatLife(0.5, 'uz')).toBe('6 oy');
   });
 });

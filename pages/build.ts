@@ -5,8 +5,13 @@
 // Vite plugin in vite.config.ts after the app build; pure helpers are tested in test/pages.test.ts.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { GROUPS, groupKeys, groupOfKeys, type GroupId } from '../src/taxa.ts';
+import { GROUPS, groupKeys, groupOfKeys, WILD_BASIS, type GroupId } from '../src/taxa.ts';
 import { commonsThumbs } from '../src/wiki.ts';
+import { createHash } from 'node:crypto';
+
+const WILD_QS = WILD_BASIS.map((b) => `basisOfRecord=${b}`).join('&');
+/** Changes whenever pages.css does: the stylesheet URL busts browser and CDN caches. */
+const CSS_VERSION = createHash('sha256').update(readFileSync(new URL('./pages.css', import.meta.url))).digest('hex').slice(0, 10);
 
 export const SITE = 'https://fauna.bristleconelab.org';
 
@@ -15,7 +20,8 @@ export interface SpeciesRow {
   key: number; wikidata: string; links: number; sci: string; labelEn: string | null; labelUz: string | null;
   vernacular: string | null; article: string | null; image: string | null;
   phylumKey: number | null; classKey: number | null; orderKey?: number | null; class: string | null; order: string | null; family: string | null;
-  records: number; years: [number, number] | null; countries: [string, number][]; redlist: string | null;
+  /** records in the wild (no fossils, no zoo animals); `seen`: of those, sightings (human or machine observations) */
+  records: number; seen?: number; years: [number, number] | null; countries: [string, number][]; redlist: string | null;
   wiki: { title: string; extract: string; url: string } | null;
   photo: { thumb: string | null; page: string | null; artist: string; licence: string } | null;
 }
@@ -33,8 +39,8 @@ export const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ES
 export const jsonLd = (o: unknown) => JSON.stringify(o).replace(/</g, '\\u003c');
 const fmt = (n: number) => n.toLocaleString('en-US');
 const REGION = new Intl.DisplayNames(['en'], { type: 'region' });
-/** English name of an ISO 3166 code, for countries without a page of their own. */
-export const regionName = (iso: string) => { try { return REGION.of(iso) ?? iso; } catch { return iso; } };
+/** Everyday English name of an ISO 3166 code ("China", not "People's Republic of China"). */
+export const regionName = (iso: string, fallback = iso) => { try { const n = REGION.of(iso); return n && n !== iso ? n : fallback; } catch { return fallback; } };
 
 /** URL slug: ASCII, lowercase, words joined by hyphens ("Grey wolf" -> "grey-wolf", "Côte d'Ivoire" -> "cote-d-ivoire"). */
 export function slugify(s: string): string {
@@ -47,7 +53,11 @@ export function slugify(s: string): string {
  *  Wikipedia summary uses, else the first; else the scientific name. */
 export function speciesName(r: Pick<SpeciesRow, 'labelEn' | 'sci' | 'wiki' | 'vernacular'>): string {
   const sci = r.sci.toLowerCase();
-  const ok = (x: string | null | undefined): x is string => !!x && x.toLowerCase() !== sci && !/^\d/.test(x);
+  const genus = sci.split(' ')[0];
+  // not the scientific name, nor a spelling of it (Wikidata "Herpestes edwardsii" for GBIF "Herpestes edwardsi")
+  // (a one-word name may be the genus itself: the caracal is Caracal caracal)
+  const binomialLike = (x: string) => { const w = x.toLowerCase().split(' '); return w.length >= 2 && w[0] === genus; };
+  const ok = (x: string | null | undefined): x is string => !!x && x.toLowerCase() !== sci && !binomialLike(x) && !/^\d/.test(x);
   const clean = (x: string) => x.replace(/\s*[([][^)\]]*[)\]]\s*/g, ' ').trim();
   const fromList = (v: string | null) => {
     const parts = (v ?? '').split(/\s*,\s*/).map(clean).filter(ok);
@@ -77,17 +87,28 @@ export function assignSlugs<T>(rows: T[], name: (r: T) => string, fallback: (r: 
   return out;
 }
 
-/** A country page lists a species only where that country gives at least 1 % of its records (and 3): a lion recorded
- *  in a German zoo should not make it an animal of Germany. */
-export function recordedIn(r: Pick<SpeciesRow, 'countries' | 'records'>, iso: string): number {
+/** Sightings of a species in a country that count it as an animal of that country. `countries` holds only sightings
+ *  in the wild (human and machine observations: no fossils, zoo animals or museum specimens, which are often filed
+ *  where the museum is). A country needs SEEN_MIN of them (10: six snow leopard "sightings" in the United States were
+ *  zoo exhibits), and either SEEN_SHARE of the species' sightings or
+ *  SEEN_MANY: a handful of strays in a country full of observers does not make a resident. */
+export const SEEN_MIN = 10, SEEN_SHARE = 0.001, SEEN_MANY = 50;
+/** Species whose sightings are nearly all farm or household animals: on their own pages, not on country lists
+ *  (a water buffalo or a llama is not an animal "of" the country it is kept in). */
+export const DOMESTIC = new Set(['Bubalus bubalis', 'Cavia porcellus', 'Bombyx mori', 'Lama glama', 'Vicugna pacos', 'Camelus dromedarius', 'Gallus gallus', 'Equus africanus']);
+export function recordedIn(r: Pick<SpeciesRow, 'countries' | 'seen' | 'sci'>, iso: string): number {
+  if (DOMESTIC.has(r.sci)) return 0;
   const n = r.countries.find(([c]) => c === iso)?.[1] ?? 0;
-  return n >= 3 && n >= 0.01 * r.records ? n : 0;
+  return n >= SEEN_MIN && (n >= SEEN_MANY || n >= SEEN_SHARE * (r.seen ?? 0)) ? n : 0;
 }
 
 /** Animal records per kind from a country's class and phylum counts. */
-export function recordsByGroup(p: Pick<PlaceRow, 'classes' | 'orders' | 'phyla'>): { id: GroupId; records: number }[] {
+export function recordsByGroup(p: Pick<PlaceRow, 'classes' | 'orders' | 'phyla' | 'records'>): { id: GroupId; records: number }[] {
   const all: Record<string, number> = { ...p.classes, ...(p.orders ?? {}), ...p.phyla }; // keys are unique across ranks
-  return GROUPS.filter((g) => g.gbif).map((g) => ({ id: g.id, records: groupKeys(g).reduce((a, k) => a + (all[String(k)] ?? 0), 0) }))
+  const kinds = GROUPS.filter((g) => g.gbif).map((g) => ({ id: g.id, records: groupKeys(g).reduce((a, k) => a + (all[String(k)] ?? 0), 0) }));
+  // everything else: sponges, tunicates, rotifers and records known only above class
+  kinds.push({ id: 'other', records: Math.max(0, p.records - kinds.reduce((a, g) => a + g.records, 0)) });
+  return kinds
     .filter((g) => g.records > 0).sort((a, b) => b.records - a.records);
 }
 
@@ -110,7 +131,7 @@ export function model(speciesRows: SpeciesRow[], placeRows: PlaceRow[]) {
   const named = all.filter((r) => best.get(r.name.toLowerCase()) === r);
   const ss = assignSlugs(named, (r) => r.name, (r) => r.sci);
   const species: Species[] = named.map((r) => ({ ...r, slug: ss.get(r)! }));
-  const pnamed = placeRows.map((p) => ({ ...p, name: p.labelEn ?? p.gbifTitle ?? p.iso, slug: '', species: [] as { sp: Species; n: number }[] }));
+  const pnamed = placeRows.map((p) => ({ ...p, name: regionName(p.iso, p.labelEn ?? p.gbifTitle ?? p.iso), slug: '', species: [] as { sp: Species; n: number }[] }));
   const ps = assignSlugs(pnamed, (p) => p.name, (p) => p.iso);
   const places: Place[] = pnamed.map((p) => ({ ...p, slug: ps.get(p)! }));
   const byIso = new Map(places.map((p) => [p.iso, p]));
@@ -118,13 +139,24 @@ export function model(speciesRows: SpeciesRow[], placeRows: PlaceRow[]) {
     const n = recordedIn(sp, iso);
     if (n) byIso.get(iso)?.species.push({ sp, n });
   }
-  for (const p of places) p.species.sort((a, b) => b.n - a.n || b.sp.links - a.sp.links);
+  // best known first (Wikipedia editions), not most recorded: one camera-trap study made the suni Kenya's "top" mammal
+  for (const p of places) p.species.sort((a, b) => b.sp.links - a.sp.links || b.n - a.n);
   return { species, places, byIso };
 }
 type Model = ReturnType<typeof model>;
 
 // ---------- templates ----------
-const photoOf = (sp: Species, width: number) => (sp.image ? commonsThumbs(sp.image, width)[0] : null);
+/** A photo URL at about `width` px and a fallback (Commons serves no thumbnail wider than the file: the fallback is the
+ *  640 px or full file the Commons API named; iNaturalist photos have one size). */
+const photoOf = (sp: Species, width: number): [string, string] | null => {
+  const remote: [string, string] | null = sp.image ? [commonsThumbs(sp.image, width)[0], sp.photo?.thumb ?? commonsThumbs(sp.image, width)[1]]
+    : sp.photo?.thumb ? [sp.photo.thumb, sp.photo.thumb] : null;
+  // cards: the site's own 320 px copy when there is one (fast), the original source as the fallback
+  return remote && width <= 330 && OWN_PHOTOS.has(sp.key) ? [`/data/photos/${sp.key}.webp`, remote[0]] : remote;
+};
+let OWN_PHOTOS = new Set<number>();
+const img = (p: [string, string], attrs: string) =>
+  `<img src="${esc(p[0])}"${p[1] !== p[0] ? ` onerror="if(this.src!=='${esc(p[1])}')this.src='${esc(p[1])}'"` : ''} ${attrs}>`;
 
 function layout(o: { title: string; description: string; path: string; image?: string | null; ld: unknown[]; crumbs: [string, string][]; body: string }) {
   const url = SITE + o.path;
@@ -148,7 +180,7 @@ function layout(o: { title: string; description: string; path: string; image?: s
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="stylesheet" href="/static/pages.css">
+<link rel="stylesheet" href="/static/pages.css?v=${CSS_VERSION}">
 <script type="application/ld+json">${jsonLd({ '@context': 'https://schema.org', '@graph': [...o.ld, crumbLd] })}</script>
 </head>
 <body>
@@ -164,18 +196,19 @@ ${o.body}
 }
 
 function card(sp: Species, note?: string) {
-  const img = photoOf(sp, 330);
-  return `<li><a class="card" href="/animals/${sp.slug}/"><span class="ph g-${sp.group}">${img ? `<img src="${esc(img)}" alt="" loading="lazy" width="330" height="220">` : ''}</span><span class="nm">${esc(sp.name)}</span><span class="sci">${esc(sp.sci)}</span>${note ? `<span class="nt">${esc(note)}</span>` : ''}</a></li>`;
+  const ph = photoOf(sp, 330);
+  return `<li><a class="card" href="/animals/${sp.slug}/"><span class="ph g-${sp.group}">${ph ? img(ph, 'alt="" loading="lazy" width="330" height="220"') : ''}</span><span class="nm">${esc(sp.name)}</span><span class="sci">${esc(sp.sci)}</span>${note ? `<span class="nt">${esc(note)}</span>` : ''}</a></li>`;
 }
 
 /** Records on a world map: NASA Blue Marble with GBIF's density squares on top, both as 2 x 2 zoom-1 tiles (GBIF
  *  answers 204, an empty image, where there are no records: hidden instead of a broken-image icon); the CSS
- *  crops the map at 60° S (71 % of the Mercator square), where Antarctica would fill a third of it. */
+ *  crops the map at about 79° S (87 % of the Mercator square): emperor penguin colonies reach 78° S, below that
+ *  Antarctica's interior would fill a fifth of the map. */
 function rangeMap(taxonKey: number, alt: string) {
   const tiles = (src: (x: number, y: number) => string, cls: string) =>
     `<span class="${cls}">${[[0, 0], [1, 0], [0, 1], [1, 1]].map(([x, y]) => `<img src="${esc(src(x, y))}" alt="" loading="lazy" width="256" height="256" onerror="this.style.visibility='hidden'">`).join('')}</span>`;
   const gibs = (x: number, y: number) => `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/BlueMarble_ShadedRelief_Bathymetry/default/GoogleMapsCompatible_Level8/1/${y}/${x}.jpeg`;
-  const gbif = (x: number, y: number) => `https://api.gbif.org/v2/map/occurrence/density/1/${x}/${y}@1x.png?srs=EPSG:3857&bin=square&squareSize=32&style=classic-noborder.poly&taxonKey=${taxonKey}`;
+  const gbif = (x: number, y: number) => `https://api.gbif.org/v2/map/occurrence/density/1/${x}/${y}@1x.png?srs=EPSG:3857&bin=square&squareSize=32&style=classic-noborder.poly&${WILD_QS}&taxonKey=${taxonKey}`;
   return `<figure class="map" role="img" aria-label="${esc(alt)}">${tiles(gibs, 'base')}${tiles(gbif, 'dots')}</figure>`;
 }
 
@@ -189,7 +222,8 @@ export function speciesPage(sp: Species, m: Model): string {
   const kin = [...related, ...more];
   const lineage = [LABEL[sp.group], sp.family && `family ${sp.family}`, sp.order && `order ${sp.order}`].filter(Boolean).join(' · ');
   const description = `Where the ${sp.name.toLowerCase() === sp.sci.toLowerCase() ? sp.sci : `${sp.name} (${sp.sci})`} has been recorded: ${fmt(sp.records)} records from ${nCountries} ${nCountries === 1 ? 'country' : 'countries'}${topNames.length ? `, most from ${topNames.join(', ')}` : ''}.${red ? ` IUCN Red List: ${red}.` : ''} Map, photo and facts.`;
-  const hero = sp.photo?.thumb ?? photoOf(sp, 640);
+  const ph = photoOf(sp, 640);
+  const hero = ph?.[0] ?? null;
   const ld = [
     {
       '@type': 'WebPage', '@id': `${SITE}/animals/${sp.slug}/`, url: `${SITE}/animals/${sp.slug}/`, name: `${sp.name} (${sp.sci})`,
@@ -204,7 +238,7 @@ export function speciesPage(sp: Species, m: Model): string {
   ];
   const body = `<article class="species">
 <header class="hero">
-${hero ? `<figure class="photo g-${sp.group}"><img src="${esc(hero)}" alt="${esc(`${sp.name}, ${sp.sci}`)}" width="640" height="427"><figcaption>Photo: ${sp.photo?.page ? `<a href="${esc(sp.photo.page)}">${esc(sp.photo.artist)}, ${esc(sp.photo.licence)}</a>` : 'Wikimedia Commons'}</figcaption></figure>` : ''}
+${ph ? `<figure class="photo g-${sp.group}">${img(ph, `alt="${esc(`${sp.name}, ${sp.sci}`)}" width="640" height="427"`)}<figcaption>Photo: ${sp.photo?.page ? `<a href="${esc(sp.photo.page)}">${esc(sp.photo.artist)}, ${esc(sp.photo.licence)}${sp.image ? '' : ', iNaturalist'}</a>` : 'Wikimedia Commons'}</figcaption></figure>` : ''}
 <div class="head">
 <h1>${esc(sp.name)}</h1>
 ${sp.name !== sp.sci ? `<p class="latin">${esc(sp.sci)}</p>` : ''}
@@ -297,6 +331,19 @@ export function placesIndex(m: Model): string {
   });
 }
 
+/** Names and the site's own photo for the well-known animals, so the globe's tiles need no Wikidata lookup and no
+ *  Wikimedia download for them: { key: [name, Uzbek name or "", scientific name, photo credit or "", licence, page,
+ *  IUCN Red List code or ""] }.
+ *  `hasPhoto(key)`: public/data/photos/<key>.webp exists (scripts/fetch_photos.py). */
+export function knownIndex(m: Model, hasPhoto: (key: number) => boolean): string {
+  const out: Record<number, [string, string, string, string, string, string, string]> = {};
+  for (const s of m.species) {
+    const p = hasPhoto(s.key) && s.photo ? s.photo : null;
+    out[s.key] = [s.name, s.labelUz ?? '', s.sci, p ? `${p.artist}${s.image ? '' : ', iNaturalist'}` : '', p?.licence ?? '', p?.page ?? '', s.redlist ?? ''];
+  }
+  return JSON.stringify(out);
+}
+
 export function sitemap(m: Model, lastmod: string): string {
   const urls = ['/', '/animals/', '/places/', ...m.species.map((s) => `/animals/${s.slug}/`), ...m.places.map((p) => `/places/${p.slug}/`)];
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -310,6 +357,7 @@ ${urls.map((u) => `  <url><loc>${esc(SITE + u)}</loc><lastmod>${esc(lastmod)}</l
 const FONTS = [
   ['node_modules/@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-wght-normal.woff2', 'bricolage.woff2'],
   ['node_modules/@fontsource-variable/source-serif-4/files/source-serif-4-latin-wght-italic.woff2', 'serif-italic.woff2'],
+  ['node_modules/@fontsource-variable/source-serif-4/files/source-serif-4-latin-wght-normal.woff2', 'serif.woff2'],
 ];
 
 /** Write every page into `out` (the build's dist/). Returns how many pages were written, 0 if there is no data. */
@@ -319,12 +367,14 @@ export function writePages(root: string, out: string): number {
   const S = JSON.parse(readFileSync(sp, 'utf8')) as { fetched: string; rows: SpeciesRow[] };
   const P = JSON.parse(readFileSync(pl, 'utf8')) as { fetched: string; rows: PlaceRow[] };
   const m = model(S.rows, P.rows);
+  OWN_PHOTOS = new Set(m.species.filter((x) => existsSync(join(root, 'public/data/photos', `${x.key}.webp`))).map((x) => x.key));
   const put = (path: string, text: string) => { const f = join(out, path); mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, text); };
   for (const s of m.species) put(`animals/${s.slug}/index.html`, speciesPage(s, m));
   for (const p of m.places) put(`places/${p.slug}/index.html`, placePage(p));
   put('animals/index.html', animalsIndex(m));
   put('places/index.html', placesIndex(m));
   put('sitemap.xml', sitemap(m, S.fetched));
+  put('data/known.json', knownIndex(m, (key) => existsSync(join(root, 'public/data/photos', `${key}.webp`))));
   mkdirSync(join(out, 'static'), { recursive: true });
   copyFileSync(join(root, 'pages/pages.css'), join(out, 'static/pages.css'));
   for (const [from, to] of FONTS) copyFileSync(join(root, from), join(out, 'static', to));

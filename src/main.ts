@@ -1,5 +1,6 @@
 import '@fontsource-variable/bricolage-grotesque';
-import '@fontsource-variable/source-serif-4/wght-italic.css';
+import '@fontsource-variable/source-serif-4/wght-italic.css'; // Latin names
+import '@fontsource-variable/source-serif-4/wght.css'; // Wikipedia summaries, upright: long italic text is hard to read
 import './styles.css';
 import * as api from './api';
 import { fmt, h, plural } from './dom';
@@ -16,6 +17,7 @@ const base = import.meta.env.BASE_URL;
 // static text in index.html carries its Uzbek in data-uz (text), data-uz-placeholder and data-uz-label (aria-label)
 if (lang === 'uz') {
   document.documentElement.lang = 'uz';
+  document.title = 'Fauna Atlas: bu yerda qaysi hayvonlar yashaydi?';
   document.querySelectorAll<HTMLElement>('[data-uz]').forEach((el) => { el.textContent = el.dataset.uz!; });
   document.querySelectorAll<HTMLInputElement>('[data-uz-placeholder]').forEach((el) => { el.placeholder = el.dataset.uzPlaceholder!; });
   document.querySelectorAll<HTMLElement>('[data-uz-label]').forEach((el) => el.setAttribute('aria-label', el.dataset.uzLabel!));
@@ -79,6 +81,7 @@ window.addEventListener('resize', () => { sheet.refresh(); pad(); });
 
 globe.onClick((lon, lat) => {
   hint.hidden = true;
+  panel.stopCompare(); // clicking a place ends "compare with…": the next search opens a species again
   panel.showPlace(lat, lon);
 });
 
@@ -86,17 +89,17 @@ initSearch($('#search'), $('#hits'), $('#search-status'),
   (id) => {
     hint.hidden = true;
     const from = panel.comparingFrom;
-    const input = $<HTMLInputElement>('#search');
-    input.placeholder = input.dataset[lang === 'uz' ? 'uzPlaceholder' : 'placeholder'] ?? input.placeholder;
+    panel.stopCompare();
     if (from && from !== id) panel.showCompare(from, id); else panel.showSpecies(id);
   },
   (p) => {
     hint.hidden = true;
+    panel.stopCompare();
     if (p.bbox) globe.fitBox(p.bbox); else globe.flyTo(p.lon, p.lat, 4);
     panel.showPlace(p.lat, p.lon);
   });
 
-// Near me: the reader's own coast. The position stays in the browser; only the square's outline goes to OBIS.
+// Near me: the reader's own surroundings. The position stays in the browser; only the square's outline goes to GBIF.
 const nearBtn = $<HTMLButtonElement>('#near-me');
 if (!('geolocation' in navigator)) nearBtn.hidden = true;
 nearBtn.addEventListener('click', () => {
@@ -112,8 +115,8 @@ nearBtn.addEventListener('click', () => {
     nearBtn.disabled = false; nearBtn.textContent = L('Near me', 'Yonimda');
     hint.hidden = false;
     hint.textContent = err.code === err.PERMISSION_DENIED
-      ? L('Location is switched off for this site. Allow it in the browser, or click the sea near you.', 'Bu sayt uchun joylashuv oʻchirilgan. Brauzerda ruxsat bering yoki yaqiningizdagi dengizni bosing.')
-      : L('Your location did not come through. Click the sea near you instead.', 'Joylashuvingiz aniqlanmadi. Oʻrniga yaqiningizdagi dengizni bosing.');
+      ? L('Location is switched off for this site. Allow it in the browser, or click the globe near you.', 'Bu sayt uchun joylashuv oʻchirilgan. Brauzerda ruxsat bering yoki yaqiningizdagi dengizni bosing.')
+      : L('Your location did not come through. Click the globe near you instead.', 'Joylashuvingiz aniqlanmadi. Oʻrniga globusda yaqiningizdagi joyni bosing.');
   }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 });
 });
 
@@ -176,9 +179,15 @@ $('#migrations-open').addEventListener('click', async () => {
           h('span', { class: 'mig-n', text: sp.routes ? L(`${plural(sp.sites, 'place')}, ${plural(sp.routes, 'link')}`, `${fmt(sp.sites)} ta joy, ${fmt(sp.routes)} ta bogʻlanish`) : L(plural(sp.sites, 'place'), `${fmt(sp.sites)} ta joy`) }));
         void id;
         b.addEventListener('click', async () => {
+          const note = b.querySelector<HTMLElement>('.mig-n')!, was = note.textContent;
+          note.textContent = L('Opening…', 'Ochilmoqda…');
+          // MiCO names follow WoRMS: an exact GBIF match first, then GBIF's own search for the name
+          const key = await api.gbifMatch(sp.scientific).catch(() => null)
+            ?? (await api.gbifSearch(sp.scientific).catch(() => []))[0]?.key ?? null;
+          if (!key) { note.textContent = L('Not found in GBIF under this name', 'GBIF da bu nom bilan topilmadi'); setTimeout(() => { note.textContent = was; }, 4000); return; }
+          note.textContent = was;
           migrations.close(); hint.hidden = true;
-          const key = await api.gbifMatch(sp.scientific).catch(() => null);
-          if (key) panel.showSpecies(key);
+          panel.showSpecies(key);
         });
         ul.append(h('li', {}, b));
       }

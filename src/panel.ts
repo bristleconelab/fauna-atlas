@@ -11,7 +11,7 @@ import {
 import { articleTitle, commonsAudio, commonsThumbs, type WikiInfo } from './wiki';
 import { renderJourneys, type JourneyHost } from './journeys';
 import { silhouette } from './silhouettes';
-import { chao1, formatLength, formatMass, parseTraits, toCsv, type Traits } from './science';
+import { chao1, formatLength, formatLife, formatMass, parseTraits, toCsv, type Traits } from './science';
 import { L, count, lang } from './i18n';
 
 const PAGE = 36;
@@ -34,7 +34,7 @@ export interface PanelHost {
 }
 
 /** What a tile or a page needs about a species, from Wikidata, GBIF and iNaturalist. */
-interface Known { name?: string; sci?: string; image?: string; photo?: api.Photo; article?: string; articleLang?: string }
+interface Known { name?: string; sci?: string; image?: string; photo?: api.Photo; article?: string; articleLang?: string; redlist?: string }
 
 export class Panel {
   private token = 0;
@@ -45,11 +45,17 @@ export class Panel {
   private lang = api.readerLanguage();
   private known = new Map<number, Known>();
   comparingFrom: number | null = null;
+  /** End "compare with…": the search box goes back to its own placeholder. */
+  stopCompare() {
+    this.comparingFrom = null;
+    const input = document.querySelector<HTMLInputElement>('#search');
+    if (input) input.placeholder = input.dataset[lang === 'uz' ? 'uzPlaceholder' : 'placeholder'] ?? input.placeholder;
+  }
 
   private runCleanups() { for (const c of this.cleanups.splice(0)) c(); }
 
   constructor(private root: HTMLElement, private body: HTMLElement, private host: PanelHost) {
-    root.querySelector('.panel-close')?.addEventListener('click', () => this.close());
+    root.querySelector('.panel-close')?.addEventListener('click', () => { this.stopCompare(); this.close(); });
   }
 
   get isOpen() { return !this.root.hidden; }
@@ -110,22 +116,20 @@ export class Panel {
       summary.textContent = L(`${plural(n, 'species', 'species')} of animals recorded in ${area}, from ${fmt(rec)} records.`,
         `${area} ichida ${fmt(rec)} ta yozuvdan ${fmt(n)} ta hayvon turi qayd etilgan.`);
     };
-    // The all-animals answer comes first: count, records and completeness show while the kinds are still sorting.
-    let survey: HTMLElement | null = null;
+    // The all-animals answer comes first: the count shows while the kinds are still sorting.
     const sorting = h('div', { class: 'sorting' },
       h('p', { class: 'fine', text: L('Sorting them by kind of animal…', 'Hayvon turkumlari boʻyicha saralanmoqda…') }),
       h('ul', { class: 'mosaic' }, ...Array.from({ length: 6 }, () => h('li', { class: 'tile-skeleton', attrs: { 'aria-hidden': 'true' } }))));
     const early = (c: api.Checklist) => {
       if (t !== this.token || !c.list.length) return;
       tell(c.list.length, c.records);
-      survey = this.surveyBox(c.list, !c.truncated, wkt, signal, t);
-      this.body.append(survey, sorting);
+      this.body.append(sorting);
     };
 
-    let list: Taxon[], records: number, truncated: boolean;
+    let list: Taxon[], records: number, cut: GroupId[];
     try {
       const r = await api.gbifChecklist(wkt, signal, early);
-      list = rankSpecies(r.list); records = r.records; truncated = r.truncated;
+      list = rankSpecies(r.list); records = r.records; cut = r.cut;
     } catch (e) {
       if (t !== this.token) return;
       sorting.remove();
@@ -142,8 +146,8 @@ export class Panel {
     }
     sorting.remove();
     tell(list.length, records);
-    survey ??= this.body.appendChild(this.surveyBox(list, !truncated, wkt, signal, t));
-    if (truncated) survey.before(h('p', { class: 'fine', text: L('One kind of animal here has more than 3,000 species on record; the list shows its 3,000 most recorded.', 'Bu yerdagi bir turkumda 3 000 dan ortiq tur bor; roʻyxatda uning eng koʻp qayd etilgan 3 000 tasi.') }));
+    const survey = this.body.appendChild(this.surveyBox(list, cut, wkt, signal, t));
+    if (cut.length) survey.before(h('p', { class: 'fine', text: L(`${cut.map((g) => GROUP_LABEL[g]).join(', ')}: more than 3,000 species on record here; the list shows the 3,000 most recorded.`, `${cut.map((g) => GROUP_LABEL[g]).join(', ')}: bu yerda 3 000 dan ortiq tur bor; roʻyxatda eng koʻp qayd etilgan 3 000 tasi.`) }));
     if (records < FEW_RECORDS) this.body.append(h('p', { class: 'callout', text: L('Few people have looked here. Most of the animals in this square have never been recorded, so this list is only a start.', 'Bu yerni kam odam oʻrgangan. Bu kvadratdagi hayvonlarning katta qismi hech qachon qayd etilmagan, shuning uchun roʻyxat faqat boshlanishi.') }));
 
     const counts = countByGroup(list);
@@ -182,8 +186,23 @@ export class Panel {
     const csv = h('button', { class: 'btn small quiet', text: L('Download the list (CSV)', 'Roʻyxatni yuklab olish (CSV)') });
     csv.addEventListener('click', async () => {
       csv.disabled = true;
-      await this.lookup(list.slice(0, 400), signal).catch(() => {});
+      const label = csv.textContent;
+      // names for every row: Wikidata in batches of 240, then GBIF itself (background queue) for those it lacks
+      for (let i = 0; i < list.length && !signal.aborted; i += 240) {
+        csv.textContent = L(`Preparing names… ${fmt(Math.min(i + 240, list.length))} of ${fmt(list.length)}`, `Nomlar tayyorlanmoqda… ${fmt(Math.min(i + 240, list.length))} / ${fmt(list.length)}`);
+        await this.lookup(list.slice(i, i + 240), signal).catch(() => {});
+      }
+      const nameless = list.filter((x) => !this.known.get(x.key)?.sci).map((x) => x.key);
+      for (let i = 0; i < nameless.length && !signal.aborted; i += 8) {
+        csv.textContent = L(`Preparing names… ${fmt(i)} of ${fmt(nameless.length)} from GBIF`, `Nomlar tayyorlanmoqda… GBIF dan ${fmt(i)} / ${fmt(nameless.length)}`);
+        await Promise.all(nameless.slice(i, i + 8).map(async (k) => {
+          const sp = await api.gbifSpecies(k, signal, true).catch(() => null);
+          if (sp) this.known.set(k, { ...(this.known.get(k) ?? {}), sci: sp.canonicalName ?? sp.scientificName });
+        }));
+      }
+      csv.textContent = label;
       csv.disabled = false;
+      if (signal.aborted) return;
       const rows = [['gbif_key', 'scientific_name', 'common_name', 'group', 'records_in_square', 'gbif_url'],
         ...list.map((x) => [x.key, this.known.get(x.key)?.sci ?? '', this.known.get(x.key)?.name ?? '', GROUPS.find((g) => g.id === x.group)!.label, x.records, `https://www.gbif.org/species/${x.key}`])];
       download(`fauna-${lat.toFixed(2)}_${lon.toFixed(2)}.csv`, toCsv(rows), 'text/csv');
@@ -195,28 +214,47 @@ export class Panel {
     more.hidden = true;
 
     const head = mixed.slice(0, PREFETCH);
-    await Promise.race([this.lookup(head, signal), new Promise((r) => setTimeout(r, 4000))]);
+    // the site's own index answers in milliseconds: order by it and draw at once; when it covers few of the first
+    // tiles (a place of little-known animals), give Wikidata a moment too
+    const own = await api.knownIndex(import.meta.env.BASE_URL);
+    const ownShare = head.filter((x) => own[x.key]?.[3]).length / Math.max(1, head.length);
+    await Promise.race([this.lookup(head, signal), new Promise((r) => setTimeout(r, ownShare >= 0.25 ? 0 : 4000))]);
     if (t !== this.token) return;
-    const hasPhoto = (x: Taxon) => !!this.known.get(x.key)?.image;
+    const hasPhoto = (x: Taxon) => !!(this.known.get(x.key)?.image || this.known.get(x.key)?.photo);
     mixed = [...head.filter(hasPhoto), ...head.filter((x) => !hasPhoto(x)), ...mixed.slice(PREFETCH)];
     render();
   }
 
-  /** Inventory completeness and record years for a square. */
-  private surveyBox(list: Taxon[], complete: boolean, wkt: string, signal: AbortSignal, t: number): HTMLElement {
+  /** How well a square is known, one kind of animal at a time (Chao1 and sample coverage only make sense within a
+   *  group that is recorded with similar effort), and the years of its first and last record. */
+  private surveyBox(list: Taxon[], cut: GroupId[], wkt: string, signal: AbortSignal, t: number): HTMLElement {
     const box = h('div', { class: 'survey' });
-    const ch = complete ? chao1(list.map((x) => x.records)) : null;
-    if (ch) {
-      const pct = Math.round(ch.completeness * 100);
-      box.append(
-        h('div', { class: 'meter', attrs: { role: 'img', 'aria-label': L(`About ${pct} % of the likely species recorded`, `Ehtimoliy turlarning taxminan ${pct} % qayd etilgan`) } }, h('span', { attrs: { style: `--w:${pct}%` } })),
-        h('p', { text: L(`Recorded so far: about ${pct} % of the ${fmt(Math.round(ch.estimate))} species that more looking would probably find here.`, `Hozircha qayd etilgan: koʻproq izlansa bu yerda topilishi mumkin boʻlgan ${fmt(Math.round(ch.estimate))} ta turning taxminan ${pct} %.`) }),
-        h('p', { class: 'fine', text: L(`Chao1 estimate from ${plural(ch.observed, 'species', 'species')}, ${fmt(ch.f1)} of them recorded only once and ${fmt(ch.f2)} twice. Records stand in for individuals, so read it as a guide to how well this ground is known, not a count.`,
-          `Chao1 bahosi: ${fmt(ch.observed)} ta tur, ulardan ${fmt(ch.f1)} tasi faqat bir marta va ${fmt(ch.f2)} tasi ikki marta qayd etilgan. Yozuvlar individlar oʻrnida, shuning uchun buni sanoq emas, joy qanchalik yaxshi oʻrganilgani haqidagi yoʻl-yoʻriq deb oʻqing.`) }));
+    const rows = GROUPS.filter((g) => g.id !== 'other' && !cut.includes(g.id))
+      .map((g) => ({ g, c: chao1(list.filter((x) => x.group === g.id).map((x) => x.records)) }))
+      .filter((x): x is { g: (typeof GROUPS)[number]; c: NonNullable<ReturnType<typeof chao1>> } => !!x.c)
+      .sort((a, b) => b.c.observed - a.c.observed).slice(0, 6);
+    if (rows.length) {
+      box.append(h('p', { class: 'survey-title', text: L('How well is this ground known?', 'Bu joy qanchalik yaxshi oʻrganilgan?') }));
+      const table = h('ul', { class: 'known' });
+      for (const { g, c } of rows) {
+        const pct = Math.round(c.completeness * 100), cov = Math.round(c.coverage * 100);
+        const judged = c.coverage >= 0.9;
+        table.append(h('li', {},
+          h('span', { class: 'k-name', text: GROUP_LABEL[g.id] }),
+          h('span', { class: 'meter', attrs: { role: 'img', 'aria-label': judged ? L(`${pct} % of the likely species recorded`, `ehtimoliy turlarning ${pct} % qayd etilgan`) : L('too few records to judge', 'baholash uchun yozuv kam') } },
+            h('span', { attrs: { style: `--w:${judged ? pct : 0}%` } })),
+          h('span', { class: 'k-text', text: judged
+            ? L(`${fmt(c.observed)} recorded of at least ${fmt(Math.round(c.estimate))} (${fmt(Math.round(c.lower))}–${fmt(Math.round(c.upper))})`,
+              `${fmt(c.observed)} ta qayd etilgan, kamida ${fmt(Math.round(c.estimate))} ta (${fmt(Math.round(c.lower))}–${fmt(Math.round(c.upper))})`)
+            : L(`${fmt(c.observed)} recorded; too few records to judge (coverage ${cov} %)`, `${fmt(c.observed)} ta qayd etilgan; baholash uchun yozuv kam (qamrov ${cov} %)`) })));
+      }
+      box.append(table, h('p', { class: 'fine', text: L(
+        'Per kind of animal: the species recorded and a Chao1 lower bound for how many live here (95 % interval), from how many species were recorded only once or twice. Below 90 % sample coverage the records are too patchy to judge. Records stand in for individuals, so read it as a guide to how well the ground is known, not a count.',
+        'Har bir turkum uchun: qayd etilgan turlar va bu yerda kamida nechta tur yashashining Chao1 quyi chegarasi (95 % oraliq), faqat bir yoki ikki marta qayd etilgan turlar soniga qarab. Qamrov 90 % dan past boʻlsa, yozuvlar baholash uchun juda siyrak. Yozuvlar individlar oʻrnida, shuning uchun buni sanoq emas, joy qanchalik yaxshi oʻrganilgani haqidagi yoʻl-yoʻriq deb oʻqing.') }));
     }
     api.gbifFacet({ geometry: wkt }, 'year', 400, signal).then((ys) => {
       if (t !== this.token) return;
-      const years = ys.map((y) => Number(y.name)).filter((y) => y >= 1700 && y <= 2100);
+      const years = ys.map((y) => Number(y.name)).filter((y) => y >= 1758 && y <= new Date().getUTCFullYear()); // 1758: Linnaeus; 1700 is a placeholder
       if (!years.length) return;
       const first = Math.min(...years), last = Math.max(...years), age = new Date().getUTCFullYear() - last;
       box.append(h('p', { class: 'fine', text: age > 10 ? L(`Records from ${first} to ${last}: nobody has recorded an animal here for ${age} years.`, `Yozuvlar ${first}–${last} yillar: bu yerda ${age} yildan beri hech kim hayvon qayd etmagan.`)
@@ -228,23 +266,37 @@ export class Panel {
   /** Names, scientific names and photos for species not looked up yet: Wikidata by GBIF id first, then GBIF itself,
    *  then an openly licensed iNaturalist photo. */
   private async lookup(taxa: Taxon[], signal: AbortSignal) {
-    const need = taxa.filter((x) => !this.known.has(x.key));
+    let need = taxa.filter((x) => !this.known.has(x.key));
+    if (!need.length) return;
+    // the well-known animals come from the site's own index and photos: no Wikidata round trip, no Wikimedia download.
+    // One the site has no photo of keeps its name and Red List status from the index and still asks Wikidata for a photo.
+    const own = await api.knownIndex(import.meta.env.BASE_URL);
+    const partial = new Map<number, Known>();
+    for (const s of need) {
+      const k = own[s.key];
+      if (!k) continue;
+      const [name, uz, sci, credit, licence, page, redlist] = k;
+      const entry: Known = { name: lang === 'uz' ? uz || name : name, sci, redlist: redlist || undefined };
+      if (credit) this.known.set(s.key, { ...entry, photo: { url: `${import.meta.env.BASE_URL}data/photos/${s.key}.webp`, credit, licence, page, own: true } });
+      else partial.set(s.key, entry);
+    }
+    need = need.filter((x) => !this.known.has(x.key));
     if (!need.length) return;
     const info = await api.wikidataByAphia(need.map((s) => s.key), undefined, this.lang, signal).catch(() => new Map<number, WikiInfo>());
     if (signal.aborted) return;
-    for (const s of need) this.known.set(s.key, { ...(info.get(s.key) ?? {}) });
+    for (const s of need) this.known.set(s.key, { ...(info.get(s.key) ?? {}), ...(partial.get(s.key) ?? {}) });
   }
 
   /** Scientific and English names from GBIF for tiles Wikidata did not know, six at a time. */
-  private async fillFromGbif(keys: number[], t: number, apply: (k: number) => void) {
+  private async fillFromGbif(keys: number[], t: number, apply: (k: number) => void, signal?: AbortSignal) {
     for (let i = 0; i < keys.length && t === this.token; i += 6) {
       await Promise.all(keys.slice(i, i + 6).map(async (k) => {
-        const sp = await api.gbifSpecies(k, undefined, true).catch(() => null);
+        const sp = await api.gbifSpecies(k, signal, true).catch(() => null);
         if (!sp || t !== this.token) return;
         const kn = this.known.get(k) ?? {};
         kn.sci ??= sp.canonicalName ?? sp.scientificName;
         if (!kn.name && sp.vernacularName && lang !== 'uz') kn.name = capital(sp.vernacularName);
-        if (!kn.image && !kn.photo) kn.photo = (await api.gbifPhoto(k, undefined, true).catch(() => null)) ?? undefined;
+        if (!kn.image && !kn.photo) kn.photo = (await api.gbifPhoto(k, signal, true).catch(() => null)) ?? undefined;
         this.known.set(k, kn);
         apply(k);
       }));
@@ -270,12 +322,15 @@ export class Panel {
       if (!li || !w) return;
       if (w.name) li.querySelector('.tile-name')!.textContent = w.name;
       if (w.sci) li.querySelector('.latin')!.textContent = w.sci;
-      li.querySelector('.tile')!.setAttribute('aria-label', [w.name, w.sci].filter(Boolean).join(', '));
+      li.querySelector('.tile')!.setAttribute('aria-label', [w.name, w.sci, w.redlist && THREATENED.has(w.redlist) ? IUCN_LABEL[w.redlist] : ''].filter(Boolean).join(', '));
+      // threatened animals carry their Red List badge on the tile (known from the index; others show it on their page)
+      if (w.redlist && THREATENED.has(w.redlist) && !li.querySelector('.iucn')) li.querySelector('.tile-photo')!.append(h('span', { class: `iucn iucn-${w.redlist}`, text: IUCN_LABEL[w.redlist] }));
       const frame = li.querySelector<HTMLElement>('.tile-photo')!;
       if (frame.querySelector('img')) return;
       if (w.image) loadPhoto(frame, commonsThumbs(w.image, 330), '', false).dataset.file = w.image;
-      else if (w.photo) { const img = loadPhoto(frame, [w.photo.url], '', false); img.title = `${L('Photo', 'Surat')}: ${w.photo.credit}, ${w.photo.licence}, iNaturalist`; }
+      else if (w.photo) { const img = loadPhoto(frame, [w.photo.url], '', false); img.title = `${L('Photo', 'Surat')}: ${w.photo.credit}, ${w.photo.licence}${w.photo.own ? '' : ', iNaturalist'}`; }
     };
+    for (const k of tiles.keys()) if (this.known.has(k)) apply(k); // from the site's own index: no wait for Wikidata
     this.lookup(slice, signal).then(() => {
       if (t !== this.token) return;
       for (const k of tiles.keys()) apply(k);
@@ -288,7 +343,7 @@ export class Panel {
         });
       });
       const missing = slice.map((s) => s.key).filter((k) => { const w = this.known.get(k); return !w?.sci || !w?.image; });
-      this.fillFromGbif(missing, t, apply).then(() => {
+      this.fillFromGbif(missing, t, apply, signal).then(() => {
         for (const li of tiles.values()) {
           const f = li.querySelector<HTMLElement>('.tile-photo')!;
           if (f.dataset.photo === 'loading' && !f.querySelector('img')) f.dataset.photo = 'none';
@@ -329,7 +384,7 @@ export class Panel {
     const [sp, total, red, info] = await Promise.all([
       api.gbifSpecies(id, signal).catch(() => null),
       api.gbifCount({ taxonKey: id }, signal).catch(() => null),
-      api.gbifRedList(id),
+      api.gbifRedList(id, signal),
       api.wikidataByAphia([id], undefined, this.lang, signal).then((m) => m.get(id) ?? null).catch(() => null),
     ]);
     if (t !== this.token) return;
@@ -401,14 +456,16 @@ export class Panel {
     if (total != null) row(L('Records', 'Yozuvlar'), fmt(total));
     api.gbifFacet({ taxonKey: id }, 'year', 400, signal).then((ys) => {
       if (t !== this.token) return;
-      const years = ys.map((y) => Number(y.name)).filter((y) => y >= 1700 && y <= 2100);
+      const years = ys.map((y) => Number(y.name)).filter((y) => y >= 1758 && y <= new Date().getUTCFullYear()); // 1758: Linnaeus; 1700 is a placeholder
       if (years.length) row(L('Recorded', 'Qayd etilgan'), `${Math.min(...years)}–${Math.max(...years)}`);
     }).catch(() => {});
 
-    api.wikidataExtras(id, signal).then((x) => { if (t === this.token) this.renderBody(bodyBox, parseTraits(x.rows), x.audio, name.textContent ?? ''); }).catch(() => {});
+    api.gbifSynonyms(id, signal).then((syn) => api.wikidataExtras([id, ...syn], signal)).then((x) => { if (t === this.token) this.renderBody(bodyBox, parseTraits(x.rows), x.audio, name.textContent ?? ''); }).catch(() => {});
     this.renderVertical(vertical, id, signal, t);
     this.renderTools(tools, id, sci, this.species.name, signal, t);
-    this.cleanups.push(renderJourneys({ id, commonName: this.species.name, sci, signal }, journeys, this.host.journeys, () => t === this.token));
+    const synNames = await api.gbifSynonymNames(id, signal).catch(() => [] as string[]);
+    if (t !== this.token) return;
+    this.cleanups.push(renderJourneys({ id, commonName: this.species.name, sci, names: synNames, signal }, journeys, this.host.journeys, () => t === this.token));
 
     links.append(
       h('a', { text: 'GBIF', attrs: { href: `https://www.gbif.org/species/${id}`, ...ext } }), ' ',
@@ -418,9 +475,10 @@ export class Panel {
 
   /** From the deep sea to the mountain tops: where along the vertical its records lie. */
   private async renderVertical(box: HTMLElement, id: number, signal: AbortSignal, t: number) {
-    const counts = await api.gbifVertical(id, signal).catch(() => ZONES.map(() => 0));
+    const v = await api.gbifVertical(id, signal).catch(() => ({ zones: ZONES.map(() => 0), values: null }));
     if (t !== this.token) return;
-    const r = verticalRange(counts);
+    const counts = v.zones;
+    const r = verticalRange(counts, v.values);
     if (!r) return;
     const max = Math.max(...counts, 1);
     const where = (v: number) => (v >= 0 ? L(`${fmt(v)} m above sea level`, `dengiz sathidan ${fmt(v)} m yuqori`) : L(`${fmt(-v)} m below the sea surface`, `dengiz sathidan ${fmt(-v)} m pastda`));
@@ -443,7 +501,7 @@ export class Panel {
     const parts: string[] = [];
     if (tr.lengthM) parts.push(L(`up to ${formatLength(tr.lengthM)} long`, `uzunligi ${formatLength(tr.lengthM)} gacha`));
     if (tr.massKg) parts.push(L(`up to ${formatMass(tr.massKg)}`, `vazni ${formatMass(tr.massKg)} gacha`));
-    if (tr.lifeYears) parts.push(L(`lives up to ${fmt(Math.round(tr.lifeYears))} years`, `${fmt(Math.round(tr.lifeYears))} yilgacha yashaydi`));
+    if (tr.lifeYears) parts.push(L(`lives up to ${formatLife(tr.lifeYears, 'en')}`, `${formatLife(tr.lifeYears, 'uz')} gacha yashaydi`));
     if (!parts.length && !audio) return;
     box.hidden = false;
     box.append(h('h3', { text: L('Size and voice', 'Oʻlchami va ovozi') }));
@@ -506,18 +564,26 @@ export class Panel {
       h('h2', { class: 'place-title', text: L('Side by side', 'Yonma-yon') }), table);
     const load = async (id: number) => {
       const [sp, total, red, info, zones] = await Promise.all([
-        api.gbifSpecies(id, signal).catch(() => null), api.gbifCount({ taxonKey: id }, signal).catch(() => 0), api.gbifRedList(id),
+        api.gbifSpecies(id, signal).catch(() => null), api.gbifCount({ taxonKey: id }, signal).catch(() => 0), api.gbifRedList(id, signal),
         api.wikidataByAphia([id], undefined, this.lang, signal).then((m) => m.get(id) ?? {}).catch(() => ({} as WikiInfo)),
-        api.gbifVertical(id, signal).catch(() => ZONES.map(() => 0)),
+        api.gbifVertical(id, signal).catch(() => ({ zones: ZONES.map(() => 0), values: null })),
       ]);
-      return { id, sp, total, red, info, zones };
+      let wiki: WikiInfo = info;
+      if (!wiki.image) {
+        // Wikidata may file the species under a synonym's GBIF key (the snow leopard), as on the species page
+        const syn = await api.gbifSynonyms(id, signal);
+        const m = syn.length ? await api.wikidataByAphia(syn, undefined, this.lang, signal).catch(() => new Map<number, WikiInfo>()) : new Map<number, WikiInfo>();
+        const hit = syn.map((k) => m.get(k)).find((w) => w?.image);
+        if (hit) wiki = { ...hit, ...Object.fromEntries(Object.entries(wiki).filter(([, v]) => v != null)) };
+      }
+      return { id, sp, total, red, info: wiki, zones };
     };
     const [A, B] = await Promise.all([load(a), load(b)]);
     if (t !== this.token) return;
     if (!A.sp || !B.sp) { table.replaceChildren(h('p', { class: 'fine', text: L('One of the species did not load. Try again in a moment.', 'Turlardan biri yuklanmadi. Birozdan keyin qayta urinib koʻring.') })); return; }
     const sciOf = (x: typeof A) => x.sp!.canonicalName ?? x.sp!.scientificName;
     const nm = (x: typeof A) => x.info.name ?? (lang !== 'uz' && x.sp!.vernacularName ? capital(x.sp!.vernacularName) : sciOf(x));
-    const vr = (x: typeof A) => { const r = verticalRange(x.zones); return r ? `${fmt(r.from)} … ${fmt(r.to)} m` : '—'; };
+    const vr = (x: typeof A) => { const r = verticalRange(x.zones.zones, x.zones.values); return r ? `${fmt(r.from)} … ${fmt(r.to)} m` : '—'; };
     const photo = (x: typeof A) => {
       const g = groupOfKeys(x.sp!.classKey, x.sp!.phylumKey, x.sp!.orderKey);
       const f = h('div', { class: `tile-photo g-${g}` }, silhouette(g));

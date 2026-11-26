@@ -28,6 +28,28 @@ UA = 'fauna-atlas-pages/1.0 (+https://github.com/bristleconelab/fauna-atlas)'
 GBIF = 'https://api.gbif.org/v1'
 QLEVER = 'https://qlever.dev/api/wikidata'
 CLEAN = {'hasCoordinate': 'true', 'hasGeospatialIssue': 'false', 'occurrenceStatus': 'PRESENT'}
+# Records of animals as they live: no fossils (megalodon, mammoths) and no zoo or aquarium animals (LIVING_SPECIMEN).
+WILD = {**CLEAN, 'basisOfRecord': ['HUMAN_OBSERVATION', 'MACHINE_OBSERVATION', 'OBSERVATION', 'PRESERVED_SPECIMEN',
+                                   'MATERIAL_SAMPLE', 'MATERIAL_CITATION', 'OCCURRENCE']}
+# Where a species is seen alive today, for the country lists: museum specimens are often filed where the museum is
+# (125 of the 134 snow leopard records in the United States are preserved specimens).
+SEEN = {**CLEAN, 'basisOfRecord': ['HUMAN_OBSERVATION', 'MACHINE_OBSERVATION', 'OBSERVATION']}
+# People are not on the animal pages; hominin fossils are already gone with FILTER fossil taxon / WILD.
+SKIP_KEYS = {2436436}  # Homo sapiens
+SKIP_GENERA = {'Homo', 'Australopithecus', 'Paranthropus'}
+MIN_RECORDS = 20  # fewer wild records than this: not enough for a page
+# Domestic forms GBIF files under a wild species: their sightings are subtracted from that species' countries
+# (iNaturalist dogs, "Canis familiaris", sit under Canis lupus: Kenya's 48 "grey wolf" sightings were dogs).
+DOMESTIC_FORMS = {5219173: [6164210]}  # Canis lupus <- Canis lupus familiaris
+
+
+def subtract_domestic(f, key, countries):
+    """Country sightings of `key` minus those of its domestic forms (DOMESTIC_FORMS)."""
+    for sub in DOMESTIC_FORMS.get(key, []):
+        r = f.gbif('occurrence/search', {**SEEN, 'taxonKey': sub, 'limit': 0, 'facet': 'country', 'facetLimit': 400}) or {}
+        dom = {x['name']: x['count'] for x in (r.get('facets') or [{}])[0].get('counts', [])}
+        countries = [[c, n - dom.get(c, 0)] for c, n in countries if n - dom.get(c, 0) > 0]
+    return sorted(countries, key=lambda x: -x[1])
 
 
 class Fetcher:
@@ -43,7 +65,7 @@ class Fetcher:
             with open(path, encoding='utf-8') as f:
                 return json.load(f)
         host = urllib.parse.urlparse(url).netloc
-        for attempt in range(8):
+        for attempt in range(16):  # GBIF has bursts of 429/5xx that last minutes: wait them out
             wait = self.last.get(host, 0) + pace - time.time()
             if wait > 0:
                 time.sleep(wait)
@@ -59,11 +81,11 @@ class Fetcher:
                     break
                 if e.code in (429, 500, 502, 503, 504):
                     ra = e.headers.get('Retry-After')
-                    time.sleep(float(ra) + 1 if ra and ra.isdigit() else 5 * (attempt + 1))
+                    time.sleep(float(ra) + 1 if ra and ra.isdigit() else min(60, 5 * (attempt + 1)))
                     continue
                 raise
             except (urllib.error.URLError, TimeoutError, ConnectionError):
-                time.sleep(5 * (attempt + 1))
+                time.sleep(min(60, 5 * (attempt + 1)))
         else:
             raise RuntimeError('gave up on ' + url)
         tmp = f'{path}.{os.getpid()}.tmp'  # per process: two runs may fetch the same URL at once
@@ -91,20 +113,42 @@ PREFIX schema: <http://schema.org/>
 
 
 def top_species(f, limit):
-    q = PREFIXES + f'''SELECT ?item ?gbif ?links ?sci (SAMPLE(?img) AS ?image) (SAMPLE(?en) AS ?labelEn) (SAMPLE(?uz) AS ?labelUz)
-  (SAMPLE(?art) AS ?article) WHERE {{
+    q = PREFIXES + f'''SELECT ?item ?gbif ?links ?sci (GROUP_CONCAT(DISTINCT STR(?img); separator="|") AS ?images) (SAMPLE(?en) AS ?labelEn)
+  (SAMPLE(?uz) AS ?labelUz) (SAMPLE(?art) AS ?article) WHERE {{
   ?item wdt:P105 wd:Q7432 ; wdt:P846 ?gbif ; wikibase:sitelinks ?links ; wdt:P225 ?sci .
   ?item wdt:P171* wd:Q729 .
   FILTER(?links >= 15)
+  FILTER NOT EXISTS {{ ?item wdt:P31 wd:Q23038290 }}
   OPTIONAL {{ ?item wdt:P18 ?img }}
   OPTIONAL {{ ?item rdfs:label ?en FILTER(LANG(?en) = "en") }}
   OPTIONAL {{ ?item rdfs:label ?uz FILTER(LANG(?uz) = "uz") }}
   OPTIONAL {{ ?art schema:about ?item ; schema:isPartOf <https://en.wikipedia.org/> }}
 }} GROUP BY ?item ?gbif ?links ?sci ORDER BY DESC(?links) LIMIT {limit}'''
     v = lambda b, k: b[k]['value'] if k in b else None
+    def photo(images):
+        # a photo, not a drawing: DBCLS cartoons (.svg) and animations (.gif) are skipped
+        return next((x for x in (images or '').split('|') if x and re.search(r'\.(jpe?g|png|webp|tiff?)$', x, re.I)), None)
     return [{'wikidata': v(b, 'item').rsplit('/', 1)[1], 'gbif': v(b, 'gbif'), 'links': int(v(b, 'links')), 'sci': v(b, 'sci'),
-             'image': v(b, 'image'), 'labelEn': v(b, 'labelEn'), 'labelUz': v(b, 'labelUz'), 'article': v(b, 'article')}
+             'image': photo(v(b, 'images')), 'labelEn': v(b, 'labelEn'), 'labelUz': v(b, 'labelUz'), 'article': v(b, 'article')}
             for b in f.sparql(q)]
+
+
+INAT = '50c9509d-22c7-4a22-a47d-8c48425ef4a7'
+
+
+def inat_photo(f, key):
+    """An openly licensed (CC0, CC BY, CC BY-SA) iNaturalist photo from GBIF, for species Wikidata has no photo for."""
+    r = f.gbif('occurrence/search', {'taxonKey': key, 'mediaType': 'StillImage', 'datasetKey': INAT, 'limit': 10})
+    for o in (r or {}).get('results', []):
+        for m in o.get('media', []):
+            lic = (m.get('license') or '').lower()
+            if not m.get('identifier') or '-nc' in lic or '-nd' in lic or not re.search(r'publicdomain|/by/|/by-sa/|cc0', lic):
+                continue
+            name = 'CC0' if re.search(r'publicdomain|cc0', lic) else 'CC BY-SA' if 'by-sa' in lic else 'CC BY'
+            url = re.sub(r'/original\.(jpe?g|png)$', r'/medium.\1', m['identifier'], flags=re.I)
+            return {'thumb': url, 'page': f'https://www.gbif.org/occurrence/{o["key"]}',
+                    'artist': (m.get('rightsHolder') or 'iNaturalist observer')[:120], 'licence': name, 'source': 'iNaturalist'}
+    return None
 
 
 def commons_file(url):
@@ -161,22 +205,27 @@ def species(f, n):
             sp = f.gbif(f'species/{sp["acceptedKey"]}')
         if not sp or sp.get('kingdom') != 'Animalia' or sp.get('rank') != 'SPECIES' or sp['key'] in seen:
             continue
-        occ = f.gbif('occurrence/search', {**CLEAN, 'taxonKey': sp['key'], 'limit': 0, 'facet': ['country', 'year'],
-                                           'facetLimit': 400})
-        if not occ or not occ.get('count'):
+        if sp['key'] in SKIP_KEYS or (sp.get('canonicalName') or c['sci']).split(' ')[0] in SKIP_GENERA:
             continue
-        seen.add(sp['key'])
-        facets = {x['field']: x['counts'] for x in occ.get('facets', [])}
-        years = sorted(int(y['name']) for y in facets.get('YEAR', []) if 1700 <= int(y['name']) <= 2100)
         red = f.gbif(f'species/{sp["key"]}/iucnRedListCategory') or {}
+        if red.get('code') == 'EX':
+            continue  # extinct: not "where it lives"
+        occ = f.gbif('occurrence/search', {**WILD, 'taxonKey': sp['key'], 'limit': 0, 'facet': 'year', 'facetLimit': 400})
+        if not occ or occ.get('count', 0) < MIN_RECORDS:
+            continue
+        seen_in = f.gbif('occurrence/search', {**SEEN, 'taxonKey': sp['key'], 'limit': 0, 'facet': 'country', 'facetLimit': 400})
+        seen.add(sp['key'])
+        facets = {x['field']: x['counts'] for x in occ.get('facets', []) + (seen_in or {}).get('facets', [])}
+        # 1758: Linnaeus; earlier "years" are placeholders (1700) or errors
+        years = sorted(int(y['name']) for y in facets.get('YEAR', []) if 1758 <= int(y['name']) <= int(time.strftime('%Y')))
         out.append({
             'key': sp['key'], 'wikidata': c['wikidata'], 'links': c['links'],
             'sci': sp.get('canonicalName') or c['sci'], 'labelEn': c['labelEn'], 'labelUz': c['labelUz'],
             'vernacular': sp.get('vernacularName'), 'article': c['article'], 'image': commons_file(c['image']),
             'phylumKey': sp.get('phylumKey'), 'classKey': sp.get('classKey'), 'orderKey': sp.get('orderKey'),
             'class': sp.get('class'), 'order': sp.get('order'), 'family': sp.get('family'),
-            'records': occ['count'], 'years': [years[0], years[-1]] if years else None,
-            'countries': [[x['name'], x['count']] for x in facets.get('COUNTRY', [])],
+            'records': occ['count'], 'seen': (seen_in or {}).get('count', 0), 'years': [years[0], years[-1]] if years else None,
+            'countries': subtract_domestic(f, sp['key'], [[x['name'], x['count']] for x in facets.get('COUNTRY', [])]),
             'redlist': red.get('code') if red.get('code') not in (None, 'NE') else None,
         })
         if len(out) % 100 == 0:
@@ -188,6 +237,9 @@ def species(f, n):
     credits = commons_credits(f, [s['image'] for s in out])
     for s in out:
         s['photo'] = credits.get(s['image']) if s['image'] else None
+        if not s['photo']:
+            s['image'] = None
+            s['photo'] = inat_photo(f, s['key'])
     return out
 
 
@@ -204,7 +256,7 @@ SELECT ?iso (SAMPLE(?c) AS ?item) (SAMPLE(?coord) AS ?coords) (SAMPLE(?en) AS ?l
     out = []
     for c in gbif_countries:
         iso = c['iso2']
-        occ = f.gbif('occurrence/search', {**CLEAN, 'kingdomKey': 1, 'country': iso, 'limit': 0,
+        occ = f.gbif('occurrence/search', {**WILD, 'kingdomKey': 1, 'country': iso, 'limit': 0,
                                            'facet': ['classKey', 'orderKey', 'phylumKey', 'year'], 'facetLimit': 1000})
         if not occ or not occ.get('count'):
             continue

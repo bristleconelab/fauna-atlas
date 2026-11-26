@@ -56,6 +56,11 @@ jobs:
                   sys.exit(f"::error::{name} fell from {old_n} to {new_n}; keeping the old data")
           PY
           cp "$RUNNER_TEMP"/pages/*.json data/pages/
+      # the site's own 320 px photos for species new this month (existing files are kept)
+      - name: Photos
+        run: |
+          pip install --quiet pillow
+          python -I -u scripts/fetch_photos.py --data data/pages/species.json --out public/data/photos
       - uses: actions/setup-node@v7
         with:
           node-version: 24
@@ -70,7 +75,7 @@ jobs:
         run: |
           git config user.name ismoilovdevml
           git config user.email 107093598+ismoilovdevml@users.noreply.github.com
-          git add data/pages README.md
+          git add data/pages public/data/photos README.md
           if git diff --cached --quiet; then echo "no change"; exit 0; fi
           git commit -m "Refresh animal and country page data ($(date -u +%F))"
           git pull --rebase origin main

@@ -33,6 +33,8 @@ describe('static pages: helpers', () => {
     expect(speciesName(sp({ sci: 'Arctocephalus forsteri', labelEn: 'Arctocephalus forsteri', vernacular: 'South american fur seal, New Zealand fur seal',
       wiki: { title: 'Arctocephalus forsteri', extract: 'The New Zealand fur seal is a species of fur seal.', url: '' } }))).toBe('New Zealand fur seal');
     expect(speciesName(sp({ sci: 'Squatina squatina', labelEn: 'Squatina squatina', vernacular: 'Angelshark, Monkfish [shark]', wiki: null }))).toBe('Angelshark');
+    expect(speciesName(sp({ sci: 'Caracal caracal', labelEn: 'Caracal', wiki: null }))).toBe('Caracal');
+    expect(speciesName(sp({ sci: 'Herpestes edwardsi', labelEn: 'Herpestes edwardsii', wiki: { title: 'Indian grey mongoose', extract: '', url: '' } }))).toBe('Indian grey mongoose');
   });
   it('makes one page for two keys under one name, the better recorded', () => {
     const m = model([sp({ key: 1, sci: 'Torgos tracheliotos', labelEn: 'Lappet-faced vulture', records: 50 }), sp({ key: 2, sci: 'Torgos tracheliotus', labelEn: 'Lappet-faced vulture', records: 900 })], []);
@@ -43,13 +45,19 @@ describe('static pages: helpers', () => {
     const m = assignSlugs(rows, (r) => r.n, (r) => r.s);
     expect(rows.map((r) => m.get(r))).toEqual(['common-eider', 'puffin-fratercula-arctica', 'puffin-fratercula-corniculata']);
   });
-  it('leaves zoo records out of a country: at least 1 % of the species and 3 records', () => {
-    expect(recordedIn(sp({}), 'KE')).toBe(3490);
-    expect(recordedIn(sp({}), 'DE')).toBe(0); // 147 of 17,606 = 0.8 %
-    expect(recordedIn(sp({ records: 100, countries: [['UZ', 2]] }), 'UZ')).toBe(0);
+  it('counts a country by sightings in the wild: a few, and either a share of the species or many', () => {
+    // countries hold wild sightings only (no zoo animals, fossils or museum specimens): see fetch_pages_data.py
+    const lion = sp({ seen: 16834, countries: [['KE', 3490], ['IN', 60], ['DE', 4], ['US', 12]] });
+    expect(recordedIn(lion, 'KE')).toBe(3490);
+    expect(recordedIn(lion, 'IN')).toBe(60); // >= 50 sightings
+    expect(recordedIn(lion, 'DE')).toBe(0); // fewer than 10
+    expect(recordedIn(lion, 'US')).toBe(0); // 12 of 16,834: strays or escapes
+    // a little-watched country keeps its common animals: 30 of 9,000 sightings is 0.33 %
+    expect(recordedIn(sp({ seen: 9000, countries: [['UZ', 30]] }), 'UZ')).toBe(30);
+    expect(recordedIn(sp({ sci: 'Lama glama', seen: 9000, countries: [['PE', 3000]] }), 'PE')).toBe(0); // kept, not native
   });
   it('sums a country\'s class, order and phylum counts into kinds of animal', () => {
-    expect(recordsByGroup(place({}))).toEqual([{ id: 'birds', records: 800000 }, { id: 'mammals', records: 50000 }, { id: 'molluscs', records: 2000 }]);
+    expect(recordsByGroup(place({}))).toEqual([{ id: 'birds', records: 800000 }, { id: 'other', records: 148000 }, { id: 'mammals', records: 50000 }, { id: 'molluscs', records: 2000 }]);
     expect(recordsByGroup(place({ orders: { 1153: 700, 587: 300 } })).find((g) => g.id === 'fish')).toEqual({ id: 'fish', records: 1000 });
   });
   it('escapes HTML and cannot close a JSON-LD script early', () => {
@@ -59,7 +67,7 @@ describe('static pages: helpers', () => {
 });
 
 describe('static pages: output', () => {
-  const m = model([sp({}), sp({ key: 2, sci: 'Acinonyx jubatus', labelEn: 'cheetah', wikidata: 'Q2', countries: [['KE', 900]], records: 1000, redlist: 'VU' })], [place({}), place({ iso: 'DE', labelEn: 'Germany', labelUz: null })]);
+  const m = model([sp({ seen: 16834, countries: [['ZA', 5188], ['KE', 3490], ['DE', 9]] }), sp({ key: 2, sci: 'Acinonyx jubatus', labelEn: 'cheetah', wikidata: 'Q2', countries: [['KE', 900]], records: 1000, seen: 950, redlist: 'VU' })], [place({}), place({ iso: 'DE', labelEn: 'Federal Republic of Germany', labelUz: null })]);
   const lion = m.species[0];
   const html = speciesPage(lion, m);
   it('a species page has its name, canonical URL, escaped data, links to countries and the globe', () => {
@@ -72,12 +80,13 @@ describe('static pages: output', () => {
     const ld = JSON.parse(/<script type="application\/ld\+json">(.*?)<\/script>/s.exec(html)![1]);
     expect(ld['@graph'][0].about.name).toBe('Panthera leo');
   });
-  it('a country page lists its animals but not zoo animals', () => {
+  it('a country page lists its animals, not strays, under its everyday name', () => {
     const ke = placePage(m.places[0]);
     expect(ke).toContain('<h1>Animals of Kenya</h1>');
     expect(ke).toContain('href="/animals/lion/"');
     expect(ke).toContain('href="/#at=0.50,37.90"');
     expect(placePage(m.places[1])).not.toContain('href="/animals/lion/"');
+    expect(m.places[1].slug).toBe('germany'); // Intl.DisplayNames, not Wikidata's "Federal Republic of Germany"
   });
   it('the sitemap lists the home page, both indexes and every page once', () => {
     const xml = sitemap(m, '2026-11-26');

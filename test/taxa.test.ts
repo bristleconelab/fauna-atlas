@@ -75,8 +75,9 @@ describe('time', () => {
     expect(m[5]).toBe(50); expect(m.reduce((a, b) => a + b)).toBe(155);
     expect(peakSeason(m)).toMatchObject({ from: 5, to: 7 });
   });
-  it('fills empty decades', () => {
-    expect(decadeCounts([{ year: 1928, records: 7 }, { year: 1958, records: 1 }]).map((d) => d.decade)).toEqual([1900, 1910, 1920, 1930, 1940, 1950]);
+  it('fills empty decades from the first decade with records, not from 1900', () => {
+    expect(decadeCounts([{ year: 1928, records: 7 }, { year: 1958, records: 1 }]).map((d) => d.decade)).toEqual([1920, 1930, 1940, 1950]);
+    expect(decadeCounts([{ year: 2012, records: 3 }, { year: 2024, records: 9 }]).map((d) => d.decade)).toEqual([2010, 2020]);
   });
   it('classifies MiCO activities', () => {
     expect(activityKind('Spawning')).toBe('breeding');
@@ -111,17 +112,34 @@ describe('planGroups', () => {
   it('asks every present group when the all-animals list was cut at the facet limit', () => {
     expect(planGroups(600, m({ 359: 100, 212: 500 }), false)).toEqual({ ask: ['mammals', 'birds'], rest: 'other' });
   });
+  it('never leaves a group already requested (birds go out early) to subtraction', () => {
+    const p = planGroups(920, m({ 359: 100, 212: 500, 216: 300, 52: 20 }), true, ['birds', 'mammals']);
+    expect(p.rest).toBe('insects');
+    expect(p.ask.sort()).toEqual(['birds', 'mammals', 'molluscs']);
+  });
   it('asks nothing for an empty square', () => {
     expect(planGroups(0, m({}), true)).toEqual({ ask: [], rest: 'other' });
   });
 });
 
 describe('zoneCounts', () => {
-  it('bins facet values into the vertical zones, edges counted once, depth 0 and out-of-range values left out', () => {
+  it('bins facet values into the vertical zones, edges counted once, land below sea level as lowland, depth 0 and out-of-range values left out', () => {
     const z = zoneCounts(
       [{ name: '2000.0', count: 747 }, { name: '2400.0', count: 3 }, { name: '150.0', count: 10 }, { name: '-5.0', count: 2 }, { name: '9500.0', count: 1 }],
       [{ name: '0.0', count: 400 }, { name: '999.0', count: 6 }, { name: '12.0', count: 4 }],
     );
-    expect(z).toEqual([0, 0, 750, 0, 10, 4, 6, 0, 0]);
+    expect(z).toEqual([0, 0, 750, 0, 12, 4, 6, 0, 0]); // -5 m elevation is lowland
+  });
+});
+
+describe('vertical range from exact values', () => {
+  it('takes the middle half of the records straight from the values, no interpolation inside wide zones', async () => {
+    const { verticalRange, signedHeights, weightedQuantile } = await import('../src/taxa');
+    // a shore bird: records at 2, 5 and 15 m. Interpolating inside the 0-1,000 m zone used to say "250-750 m".
+    const shore = signedHeights([{ name: '2.0', count: 40 }, { name: '5.0', count: 40 }, { name: '15.0', count: 20 }], []);
+    expect(verticalRange([], shore)).toEqual({ from: 0, to: 5, records: 100 });
+    // the Dead Sea and the Caspian shore count as lowland; depth 0 (filled by land datasets) does not count as sea
+    expect(signedHeights([{ name: '-430', count: 3 }], [{ name: '0.0', count: 9 }, { name: '4300', count: 2 }])).toEqual([[-430, 3], [-4300, 2]]);
+    expect(weightedQuantile([[10, 1], [20, 1], [30, 2]], 0.5)).toBe(20);
   });
 });

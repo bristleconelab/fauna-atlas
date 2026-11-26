@@ -63,7 +63,8 @@ export function initSearch(input: HTMLInputElement, list: HTMLUListElement, stat
     const signal = ctl.signal;
     status.textContent = L('Searching…', 'Qidirilmoqda…');
     const val = <T,>(r: PromiseSettledResult<T[]>) => (r.status === 'fulfilled' ? r.value : []);
-    const latin = !/[^\u0000-ɏ]/.test(q);
+    // Latin script, Uzbek ʻ (U+02BB) and apostrophes included: "oʻrdak" still goes to GBIF
+    const latin = !/[^\u0000-\u024F\u02BB\u02BC\u2018\u2019]/.test(q);
     const none = Promise.resolve([] as never[]);
     const [s1, s2, wd, places] = await Promise.allSettled([
       latin ? api.gbifSearch(q, signal) : none,

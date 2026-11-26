@@ -1,4 +1,4 @@
-/* Ocean Life Atlas. Tokens: deep water around a cool, bright field-guide panel; plankton yellow marks a species' range. */
+/* Fauna Atlas. Forked from Ocean Life Atlas; the Fauna tokens (forest and ochre) override the base ones further down. */
 :root {
   --abyss: #0b2233;
   --deep: #12384a;
@@ -58,7 +58,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 #hint {
   position: fixed; left: 50%; bottom: 36px; transform: translateX(-50%); z-index: 4; margin: 0;
-  padding: 10px 18px; border-radius: 22px; background: rgb(11 34 51 / 0.78); color: var(--foam);
+  padding: 10px 18px; border-radius: 22px; background: rgb(20 38 28 / 0.78); color: var(--foam);
   font-size: 15px; backdrop-filter: blur(6px); pointer-events: none; white-space: nowrap;
 }
 
@@ -69,9 +69,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
   border: 0; border-radius: 20px; padding: 9px 16px; background: var(--foam); color: var(--ink); font-weight: 560;
   box-shadow: 0 4px 16px rgb(4 20 30 / 0.3);
 }
-.btn.ghost { background: rgb(11 34 51 / 0.7); color: var(--foam); box-shadow: none; }
+.btn.ghost { background: rgb(20 38 28 / 0.7); color: var(--foam); box-shadow: none; }
 #looked[aria-pressed='true'] { background: var(--seaglass); }
-#legend { width: 260px; padding: 12px 14px; border-radius: 14px; background: rgb(11 34 51 / 0.86); color: var(--foam); backdrop-filter: blur(6px); }
+#legend { width: 260px; padding: 12px 14px; border-radius: 14px; background: rgb(20 38 28 / 0.86); color: var(--foam); backdrop-filter: blur(6px); }
 #legend .fine { color: #b9cfd2; margin: 8px 0 0; }
 .legend-title { margin: 0 0 6px; font-weight: 600; }
 .ramp { height: 10px; border-radius: 5px; background: linear-gradient(90deg, #2a1d5c, #2f6f99 25%, #5fc0b0 50%, #c8ef9c 75%, #fff7c2); }
@@ -108,7 +108,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .tile { all: unset; box-sizing: border-box; display: flex; flex-direction: column; width: 100%; cursor: pointer; position: relative; border-radius: var(--r-tile); }
 .tile:focus-visible { outline: 3px solid var(--plankton); outline-offset: 3px; }
 .tile-photo { position: relative; aspect-ratio: 4 / 3; border-radius: var(--r-tile); overflow: hidden; background: var(--deep); margin-bottom: 7px; }
-.tile-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.35s; }
+.tile-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; opacity: 0; transition: opacity 0.35s; }
 .tile-photo img.in { opacity: 1; }
 .tile:hover .tile-photo img { transform: scale(1.03); transition: opacity 0.35s, transform 0.4s; }
 .tile-photo:has(img.in) .tile-group { display: none; }
@@ -128,9 +128,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .tile .iucn { position: absolute; top: 8px; left: 8px; z-index: 1; }
 /* group colours for photo-less tiles: the colour of the water each group tends to live in */
 .g-fish { background: #1d5a6c; } .g-sharks { background: #234a63; } .g-mammals { background: #2b4058; }
-.g-turtles { background: #2c5a52; } .g-birds { background: #3d5a73; } .g-corals { background: #6b4a5e; }
+.g-birds { background: #3d5a73; } .g-corals { background: #6b4a5e; }
 .g-molluscs { background: #4f4a6b; } .g-crustaceans { background: #6b4f3d; } .g-echinoderms { background: #6b3d3d; }
-.g-algae { background: #3d6b45; } .g-plankton { background: #355f66; } .g-other { background: #3d4f5a; }
+.g-other { background: #3d4f5a; }
 
 .iucn { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 620; }
 .iucn-CR { background: #c8102e; color: #fff; } .iucn-EN { background: #f07d2a; color: #1a1a1a; }
@@ -145,7 +145,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .hero { margin: 0 -22px 16px; }
 .hero-frame { position: relative; min-height: 120px; background: var(--deep); }
 .hero-frame[data-photo='none'] { display: none; }
-.hero img { display: block; width: 100%; max-height: 300px; object-fit: cover; opacity: 0; transition: opacity 0.3s; }
+.hero img { display: block; width: 100%; max-height: 300px; object-fit: cover; object-position: 50% 30%; opacity: 0; transition: opacity 0.3s; }
 .hero img.in { opacity: 1; }
 .hero figcaption { padding: 4px 22px 0; font-size: 12px; color: var(--muted); }
 .panel-body > .hero:first-child { margin-top: -22px; }
@@ -155,7 +155,7 @@ p.latin.big { margin: 4px 0 0; font-size: 18px; color: var(--muted); }
 .about-sp .extract { margin: 16px 0 6px; font-family: var(--serif); font-size: 16px; line-height: 1.6; }
 .extract.clamped { display: -webkit-box; -webkit-line-clamp: 6; line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
 .link-btn { border: 0; background: none; padding: 0; color: #11667a; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
-.facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 10px; margin: 18px 0; padding: 12px 0; border-block: 1px solid var(--line); }
+.facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); gap: 4px 10px; margin: 18px 0; padding: 12px 0; border-block: 1px solid var(--line); }
 .facts dt { font-size: 12px; color: var(--muted); grid-row: 1; }
 .facts dd { margin: 0; font-size: 17px; font-weight: 620; grid-row: 2; }
 .depth h3 { margin: 6px 0 4px; font-size: 18px; letter-spacing: -0.01em; }
@@ -216,7 +216,7 @@ p.latin.big { margin: 4px 0 0; font-size: 18px; color: var(--muted); }
 .legend-dots { list-style: none; padding: 0; margin: 4px 0 10px; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted); }
 .legend-dots li, .track-list li { display: flex; align-items: center; gap: 6px; }
 .dot { width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid var(--abyss); flex: none; }
-.legend-dots .line { width: 18px; height: 3px; border-radius: 2px; background: #ffb3c7; outline: 1px solid rgb(11 34 51 / 0.4); }
+.legend-dots .line { width: 18px; height: 3px; border-radius: 2px; background: #ffb3c7; outline: 1px solid rgb(20 38 28 / 0.4); }
 .play-row { display: flex; align-items: center; gap: 12px; margin: 4px 0 10px; }
 .play-row .btn { flex: none; white-space: nowrap; }
 .clock { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -289,7 +289,7 @@ p.latin.big { margin: 4px 0 0; font-size: 18px; color: var(--muted); }
 
 /* ---------- v0.4: language, tour, survey, body, tools, compare, legend modes ---------- */
 html[lang='uz'] [data-l='en'], html:not([lang='uz']) [data-l='uz'] { display: none; }
-.lang-switch { position: fixed; top: 16px; right: 16px; z-index: 5; display: flex; border-radius: 16px; overflow: hidden; background: rgb(11 34 51 / 0.7); }
+.lang-switch { position: fixed; top: 16px; right: 16px; z-index: 5; display: flex; border-radius: 16px; overflow: hidden; background: rgb(20 38 28 / 0.7); }
 .lang-switch button { border: 0; background: none; color: var(--foam); font-size: 13px; font-weight: 600; padding: 6px 11px; }
 .lang-switch button[aria-pressed='true'] { background: var(--foam); color: var(--ink); }
 body.panel-open .lang-switch { right: 472px; }
@@ -395,7 +395,6 @@ a, .back, .link-btn { color: #2d6a3e; }
 body.panel-open .powered { right: 472px; }
 @media (max-width: 759px) {
   .brand img { height: 30px; }
-  .powered { top: 48px; right: 12px; }
   body.panel-open .powered { display: none; }
 }
 @media (max-width: 759px) {
@@ -410,3 +409,22 @@ body.panel-open .powered { right: 472px; }
   #hint { bottom: 118px; }
   .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group { display: none; }
 }
+
+/* ---------- how well a square is known, per kind of animal ---------- */
+.survey-title { font-weight: 650; }
+.known { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 7px; }
+.known li { display: grid; grid-template-columns: 9.5rem 1fr; gap: 2px 10px; align-items: center; font-size: 13px; }
+.known .k-name { font-weight: 600; grid-row: span 2; line-height: 1.25; }
+.known .meter { height: 6px; }
+.known .k-text { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* panel open on wide screens: keep the map's +/- and credits beside the panel, not under it */
+@media (min-width: 760px) {
+  /* beside the panel, and one row up so the credits clear the corner buttons */
+  body.panel-open .maplibregl-ctrl-bottom-right { right: 464px; bottom: 56px; }
+}
+/* 760-1,099 px with the panel open: the badge and the language switch would sit on the search box */
+@media (min-width: 760px) and (max-width: 1099px) {
+  body.panel-open .powered, body.panel-open .lang-switch { display: none; }
+}
+html[lang='uz'] .tile-photo[data-photo='none'] .tile-group::before { content: 'Surat hali yoʻq. '; }

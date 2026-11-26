@@ -7,14 +7,14 @@
 //   Photon      https://photon.komoot.io       places by name (OpenStreetMap; made for search-as-you-type)
 //   Nominatim   https://nominatim.openstreetmap.org  the name of a clicked point on land (one request per click)
 //   Marine Regions https://www.marineregions.org  the name of a clicked point at sea
-import { GROUPS, planGroups, zoneCounts, ZONES, type Taxon } from './taxa';
+import { GROUPS, planGroups, signedHeights, WILD_BASIS, zoneCounts, ZONES, type Taxon } from './taxa';
 import { parseWikidata, type WikiInfo } from './wiki';
 
 const GBIF = 'https://api.gbif.org/v1';
 /** GBIF Backbone Taxonomy. */
 const BACKBONE = 'd7dddbf4-2cf0-4f39-9b2a-bb099caae36c';
-/** Animals, with coordinates GBIF found no problem with, and present (not "absent" survey rows). */
-const CLEAN = { kingdomKey: 1, hasCoordinate: 'true', hasGeospatialIssue: 'false', occurrenceStatus: 'PRESENT' };
+/** Animals, wild, with coordinates GBIF found no problem with, and present (not "absent" survey rows). */
+const CLEAN = { kingdomKey: 1, hasCoordinate: 'true', hasGeospatialIssue: 'false', occurrenceStatus: 'PRESENT', basisOfRecord: WILD_BASIS };
 
 export class HttpError extends Error {
   /** Seconds the server asked us to wait (Retry-After on 429/503), when it said. */
@@ -53,8 +53,8 @@ export function getJSON<T>(url: string, o: GetOpts = {}): Promise<T> {
     });
     return gbif ? gbifSlot(go, !!o.low, o.signal) : go();
   };
-  // Busy public services sometimes answer 5xx/429 or stall: try again with a pause. A GBIF 429 pauses every GBIF
-  // request for the time GBIF asks (see gbifSlot), so its retries need no extra wait of their own.
+  // Busy public services sometimes answer 5xx/429 or stall: try again with a pause. A GBIF 429 or 5xx pauses every
+  // GBIF request (see gbifSlot), so its first retries need no extra wait of their own.
   const p = retry(once, gbif ? [0, 0, 0, 0, 2000, 5000] : [1200, 3500], o.signal);
   if (!o.noCache) {
     cache.set(key, p);
@@ -62,6 +62,17 @@ export function getJSON<T>(url: string, o: GetOpts = {}): Promise<T> {
     p.catch(() => cache.delete(key)); // do not keep failures or cancelled requests
   }
   return p;
+}
+
+/** Wait `ms`, or less if `signal` aborts (then throw its AbortError, like fetch). */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(signal.reason);
+    const done = () => { clearTimeout(t); signal?.removeEventListener('abort', stop); };
+    const stop = () => { done(); reject(signal!.reason); };
+    const t = setTimeout(() => { done(); resolve(); }, ms);
+    signal?.addEventListener('abort', stop, { once: true });
+  });
 }
 
 /** GBIF limits the request rate per address, more or less strictly with its load (its API reference names no number;
@@ -81,14 +92,15 @@ async function gbifSlot<T>(fn: () => Promise<T>, low: boolean, signal?: AbortSig
   else await new Promise<void>((r) => gbifQueue[low ? 'low' : 'high'].push(r)); // nextGbif counts us in
   try {
     const wait = gbifPausedUntil - Date.now();
-    if (wait > 0 && !signal?.aborted) await new Promise((r) => setTimeout(r, wait));
+    if (wait > 0) await sleep(wait, signal); // a reader who moved on frees the slot at once
     const out = await fn();
     if (++gbifOk >= 3 && gbifLimit < GBIF_MAX) { gbifLimit++; gbifOk = 0; }
     return out;
   } catch (e) {
-    if (e instanceof HttpError && e.status === 429) {
+    // 429 (too many requests) and 5xx (busy or down) alike: everyone waits, then one request at a time
+    if (e instanceof HttpError && (e.status === 429 || e.status >= 500)) {
       gbifLimit = 1; gbifOk = 0;
-      gbifPausedUntil = Math.max(gbifPausedUntil, Date.now() + 1000 * (e.retryAfter ?? 3) + Math.random() * 1000);
+      gbifPausedUntil = Math.max(gbifPausedUntil, Date.now() + 1000 * (e.retryAfter ?? (e.status === 429 ? 3 : 2)) + Math.random() * 1000);
     }
     throw e;
   } finally { gbifBusy--; nextGbif(); }
@@ -126,7 +138,8 @@ export const qs = (o: Params) => {
 /** Species recorded inside a polygon, by kind of animal. One facet request per group (in parallel): the group a
  *  species belongs to is the request that returned it, so no per-species lookup is needed. "Other" is what the
  *  all-animals request returned and no group did. */
-export interface Checklist { list: Taxon[]; records: number; truncated: boolean }
+/** `cut`: kinds of animal whose species list reached the facet limit (3,000), so their rarest species are missing. */
+export interface Checklist { list: Taxon[]; records: number; truncated: boolean; cut: Taxon['group'][] }
 /** `onAll` gets the all-animals answer as soon as it arrives (every species as group "other"): the count, records and
  *  Chao1 need nothing more, so the panel can show them while the per-group requests are still in GBIF's queue. */
 export async function gbifChecklist(wkt: string, signal?: AbortSignal, onAll?: (c: Checklist) => void): Promise<Checklist> {
@@ -142,20 +155,22 @@ export async function gbifChecklist(wkt: string, signal?: AbortSignal, onAll?: (
   const counts = (field: string) => all.facets?.find((f) => f.field === field)?.counts ?? [];
   const ac = counts('SPECIES_KEY');
   const truncated = ac.length >= LIMIT;
-  onAll?.({ list: ac.map((x) => ({ key: Number(x.name), records: x.count, group: 'other' as const })), records: all.count, truncated });
+  onAll?.({ list: ac.map((x) => ({ key: Number(x.name), records: x.count, group: 'other' as const })), records: all.count, truncated, cut: [] });
   const byKey = new Map(['CLASS_KEY', 'ORDER_KEY', 'PHYLUM_KEY'].flatMap((f) => counts(f).map((x) => [Number(x.name), x.count] as const)));
-  const plan = planGroups(all.count, byKey, !truncated);
+  const plan = planGroups(all.count, byKey, !truncated, [...early.keys()]);
   const asked = GROUPS.filter((g) => plan.ask.includes(g.id) || early.has(g.id));
   const parts = await Promise.all(asked.map((g) => early.get(g.id) ?? ask(g.gbif!)));
   const out = new Map<number, Taxon>();
-  let cut = truncated;
+  const cut: Taxon['group'][] = [];
   asked.forEach((g, i) => {
     const c = parts[i].facets?.[0]?.counts ?? [];
-    if (c.length >= LIMIT) cut = true;
+    if (c.length >= LIMIT) cut.push(g.id);
     for (const x of c) out.set(Number(x.name), { key: Number(x.name), records: x.count, group: g.id });
   });
+  // the group left to subtraction (or "other") is only complete when the all-animals list was
+  if (truncated) cut.push(plan.rest);
   for (const x of ac) if (!out.has(Number(x.name))) out.set(Number(x.name), { key: Number(x.name), records: x.count, group: plan.rest });
-  return { list: [...out.values()], records: all.count, truncated: cut };
+  return { list: [...out.values()], records: all.count, truncated: cut.length > 0, cut };
 }
 
 /** Occurrence count for any filter (animals, clean coordinates). */
@@ -165,12 +180,18 @@ export async function gbifCount(filter: Params, signal?: AbortSignal): Promise<n
 }
 /** Records per vertical zone (ZONES) for a species: one request faceting the distinct elevation and depth values,
  *  instead of one count per zone (GBIF limits the request rate). Falls back to the counts if a facet list is cut. */
-export async function gbifVertical(key: number, signal?: AbortSignal): Promise<number[]> {
+export interface Vertical { zones: number[]; values: [number, number][] | null }
+export async function gbifVertical(key: number, signal?: AbortSignal): Promise<Vertical> {
   const LIMIT = 5000;
   const r = await getJSON<Search>(`${GBIF}/occurrence/search?${qs({ ...CLEAN, taxonKey: key, limit: 0, facet: ['elevation', 'depth'], facetLimit: LIMIT })}`, { signal });
   const f = (field: string) => r.facets?.find((x) => x.field === field)?.counts ?? [];
-  if (f('ELEVATION').length < LIMIT && f('DEPTH').length < LIMIT) return zoneCounts(f('ELEVATION'), f('DEPTH'));
-  return Promise.all(ZONES.map((z) => gbifCount({ taxonKey: key, [z.param]: `${z.range[0]},${z.range[1]}` }, signal).catch(() => 0)));
+  if (f('ELEVATION').length < LIMIT && f('DEPTH').length < LIMIT) return { zones: zoneCounts(f('ELEVATION'), f('DEPTH')), values: signedHeights(f('ELEVATION'), f('DEPTH')) };
+  // GBIF ranges include both ends: stop each zone just below the next one's start, so no record counts twice
+  const zones = await Promise.all(ZONES.map((z, i) => {
+    const next = ZONES.slice(0, i).reverse().find((o) => o.param === z.param && o.range[0] === z.range[1]);
+    return gbifCount({ taxonKey: key, [z.param]: `${z.range[0]},${next ? z.range[1] - 0.01 : z.range[1]}` }, signal).catch(() => 0);
+  }));
+  return { zones, values: null };
 }
 /** Facet counts (month, year...) for any filter. */
 export async function gbifFacet(filter: Params, facet: string, limit = 400, signal?: AbortSignal): Promise<{ name: string; count: number }[]> {
@@ -203,6 +224,11 @@ export async function gbifCentre(key: number, signal?: AbortSignal): Promise<{ l
   }
   return n ? { lon: (Math.atan2(sy, sx) * 180) / Math.PI, lat: sl / n } : null;
 }
+/** Scientific names of a species' synonyms (canonical, no authors). */
+export async function gbifSynonymNames(key: number, signal?: AbortSignal): Promise<string[]> {
+  const r = await getJSON<{ results: { canonicalName?: string }[] }>(`${GBIF}/species/${Math.trunc(key)}/synonyms?limit=20`, { signal }).catch(() => null);
+  return (r?.results ?? []).map((x) => x.canonicalName).filter((x): x is string => !!x);
+}
 /** Keys of a species' synonyms: Wikidata often files a taxon under an older or newer name's GBIF key. */
 export async function gbifSynonyms(key: number, signal?: AbortSignal): Promise<number[]> {
   const r = await getJSON<{ results: { key: number }[] }>(`${GBIF}/species/${Math.trunc(key)}/synonyms?limit=20`, { signal }).catch(() => null);
@@ -212,8 +238,8 @@ export async function gbifEnglishName(key: number): Promise<string | null> {
   const r = await getJSON<{ results: { vernacularName: string; language: string }[] }>(`${GBIF}/species/${Math.trunc(key)}/vernacularNames?limit=100`).catch(() => null);
   return r?.results.find((v) => v.language === 'eng')?.vernacularName ?? null;
 }
-export async function gbifRedList(key: number): Promise<string | null> {
-  const r = await getJSON<{ code?: string }>(`${GBIF}/species/${Math.trunc(key)}/iucnRedListCategory`).catch(() => null);
+export async function gbifRedList(key: number, signal?: AbortSignal): Promise<string | null> {
+  const r = await getJSON<{ code?: string }>(`${GBIF}/species/${Math.trunc(key)}/iucnRedListCategory`, { signal }).catch(() => null);
   return r?.code && r.code !== 'NE' ? r.code : null;
 }
 
@@ -229,7 +255,8 @@ export async function gbifSuggest(text: string, signal?: AbortSignal): Promise<G
 
 /** One openly licensed photo from iNaturalist research-grade records in GBIF, for species Wikidata has none for. */
 const INAT = '50c9509d-22c7-4a22-a47d-8c48425ef4a7';
-export interface Photo { url: string; credit: string; licence: string; page: string }
+/** `own`: served from this site (data/photos/), credit already names the source. */
+export interface Photo { url: string; credit: string; licence: string; page: string; own?: boolean }
 export async function gbifPhoto(key: number, signal?: AbortSignal, low = false): Promise<Photo | null> {
   const r = await getJSON<{ results: { key: number; media?: { identifier?: string; license?: string; rightsHolder?: string }[] }[] }>(
     `${GBIF}/occurrence/search?${qs({ taxonKey: key, mediaType: 'StillImage', datasetKey: INAT, limit: 10 })}`, { signal, low }).catch(() => null);
@@ -259,7 +286,16 @@ export function licenceShort(text: string): string {
  *  tile edges. `squareSize` is in GBIF's 4096-unit tile space (64 = 8 px of the 512-px tile, 4 px on screen; near the
  *  poles the globe shows lower-zoom tiles, so cells there come out bigger). */
 export function gbifTiles(filter: Record<string, string | number>, style = 'classic-noborder.poly', squareSize = 64): string {
-  return `https://api.gbif.org/v2/map/occurrence/density/{z}/{x}/{y}@1x.png?${qs({ srs: 'EPSG:3857', bin: 'square', squareSize, style, ...filter })}`;
+  return `https://api.gbif.org/v2/map/occurrence/density/{z}/{x}/{y}@1x.png?${qs({ srs: 'EPSG:3857', bin: 'square', squareSize, style, basisOfRecord: WILD_BASIS, ...filter })}`;
+}
+
+// ---------- the well-known animals: names and the site's own photos (pages/build.ts writes data/known.json) ----------
+export type KnownRow = [name: string, uz: string, sci: string, credit: string, licence: string, page: string, redlist?: string];
+let knownP: Promise<Record<string, KnownRow>> | null = null;
+/** Loaded once, on first use; a missing file (a build without page data) is an empty index. */
+export function knownIndex(base: string): Promise<Record<string, KnownRow>> {
+  knownP ??= fetch(`${base}data/known.json`).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  return knownP;
 }
 
 // ---------- MiCO (stored, see scripts/build_mico.mjs; keyed by WoRMS id, matched here by scientific name) ----------
@@ -272,7 +308,7 @@ export function micoSpecies(base: string, id: number): Promise<MicoSpecies> { re
 // ---------- Wikidata / Commons / Wikipedia ----------
 /** Language for names and Wikipedia: the interface language when the reader chose one, else the browser's. */
 export function readerLanguage(): string {
-  try { const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('lang') : null; if (saved === 'en' || saved === 'uz') return saved; } catch { /* blocked */ }
+  try { const saved = typeof window !== 'undefined' ? window.localStorage.getItem('lang') : null; if (saved === 'en' || saved === 'uz') return saved; } catch { /* blocked */ }
   const l = (typeof navigator !== 'undefined' ? navigator.language : 'en').toLowerCase().split('-')[0];
   return /^[a-z]{2,3}$/.test(l) ? l : 'en';
 }
@@ -360,13 +396,15 @@ export async function wikidataSearchAphia(text: string, lang = readerLanguage(),
 }
 
 /** A sound recording (P51) and body size and lifespan quantities (P2067 mass, P2043 length, P2250 life expectancy)
- *  for one taxon, following an old name to the accepted taxon like the photo query does. */
-export async function wikidataExtras(id: number, signal?: AbortSignal): Promise<{ audio?: string; rows: Record<string, { value: string }>[] }> {
+ *  for one taxon under any of its GBIF keys (Wikidata files the snow leopard under a synonym's key), following an old
+ *  name to the accepted taxon like the photo query does. */
+export async function wikidataExtras(ids: number[], signal?: AbortSignal): Promise<{ audio?: string; rows: Record<string, { value: string }>[] }> {
   const query = `${PREFIXES}PREFIX p: <http://www.wikidata.org/prop/>
 PREFIX psv: <http://www.wikidata.org/prop/statement/value/>
 PREFIX wikibase: <http://wikiba.se/ontology#>
 SELECT ?audio ?massAmt ?massUnit ?lenAmt ?lenUnit ?lifeAmt ?lifeUnit WHERE {
-  ?item0 wdt:P846 "${Math.trunc(id)}" . OPTIONAL { ?item0 wdt:P12765 ?acc } BIND(COALESCE(?acc, ?item0) AS ?item)
+  VALUES ?gbif { ${ids.filter(Number.isInteger).map((x) => `"${x}"`).join(' ')} }
+  ?item0 wdt:P846 ?gbif . OPTIONAL { ?item0 wdt:P12765 ?acc } BIND(COALESCE(?acc, ?item0) AS ?item)
   { ?item wdt:P51 ?audio } UNION
   { ?item p:P2067/psv:P2067 [ wikibase:quantityAmount ?massAmt ; wikibase:quantityUnit ?massUnit ] } UNION
   { ?item p:P2043/psv:P2043 [ wikibase:quantityAmount ?lenAmt ; wikibase:quantityUnit ?lenUnit ] } UNION
@@ -454,18 +492,21 @@ const PLACE_KINDS = new Set(['country', 'state', 'region', 'province', 'county',
   'island', 'islet', 'archipelago', 'lake', 'reservoir', 'sea', 'bay', 'strait', 'ocean', 'river', 'water', 'wetland', 'glacier', 'peak',
   'mountain_range', 'ridge', 'volcano', 'valley', 'plateau', 'desert', 'forest', 'wood', 'national_park', 'nature_reserve', 'protected_area',
   'park', 'reef', 'cape', 'peninsula', 'beach', 'locality', 'administrative', 'continent']);
+const MAJOR_PLACES = new Set(['country', 'state', 'city', 'capital', 'sea', 'ocean', 'lake', 'island', 'national_park', 'continent', 'bay', 'strait']);
 /** Places by name from Photon (OpenStreetMap): countries, regions, cities, parks, lakes, seas, islands, mountains. */
 export async function searchPlaces(text: string, lang: string, signal?: AbortSignal): Promise<Place[]> {
   const r = await getJSON<{ features: PhotonF[] }>(`https://photon.komoot.io/api/?${q({ q: text, limit: 6, lang: lang === 'en' ? 'en' : 'default' })}`, { signal, timeoutMs: 10000 }).catch(() => null);
   const seen = new Set<string>();
   const out: Place[] = [];
   const ql = text.trim().toLowerCase();
-  for (const f of r?.features ?? []) {
+  for (const [i, f] of (r?.features ?? []).entries()) {
     const p = f.properties;
     if (!p.name || !PLACE_KINDS.has(p.osm_value ?? '')) continue;
     // Photon matches loosely ("qor qoploni" finds a "Qoʻrgʻoni"): keep names that contain the query or start with its first word
     const nl = p.name.toLowerCase();
-    if (!nl.includes(ql) && !nl.startsWith(ql.split(/\s+/)[0])) continue;
+    // but keep Photon's top answer when it is a major place: "Toshkent" comes back as "Tashkent"
+    const major = i === 0 && MAJOR_PLACES.has(p.osm_value ?? '');
+    if (!major && !nl.includes(ql) && !nl.startsWith(ql.split(/\s+/)[0])) continue;
     const where = [p.state, p.country].filter((x) => x && x !== p.name).join(', ');
     const key = `${p.name}|${where}`;
     if (seen.has(key)) continue;

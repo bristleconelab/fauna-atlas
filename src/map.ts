@@ -22,8 +22,9 @@ const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: 
 export const AGE_COLORS = ['#5fc0b0', '#f2c94c', '#e07a5f', '#8e4fa0'];
 /** Range squares by period (then and now) or by species (side by side). */
 export const RANGE_COLORS = { then: '#b39ddb', now: '#f2c94c', both: '#f4f8f7', a: '#f2c94c', b: '#8ecbff' };
-/** GBIF map styles matching those colours (checked 2026-11-26: yellow-red squares, purple squares, blue dots). */
-const RANGE_STYLE = { all: 'classic-noborder.poly', then: 'purpleWhite.poly', now: 'classic-noborder.poly', a: 'classic-noborder.poly', b: 'blue.marker' };
+/** GBIF map styles matching those colours (checked 2026-11-26: yellow-red squares, purple squares). Species b uses the
+ *  yellow-red squares turned blue with raster-hue-rotate: GBIF has no blue square style (blue.marker draws dots). */
+const RANGE_STYLE = { all: 'classic-noborder.poly', then: 'purpleWhite.poly', now: 'classic-noborder.poly', a: 'classic-noborder.poly', b: 'classic-noborder.poly' };
 /** Map zoom from which range and survey cells are drawn at full size (see showRanges). */
 const RANGE_NEAR = 4;
 function COLORS_LOOKED() { return ['#2a1d5c', '#2f6f99', '#5fc0b0', '#c8ef9c', '#fff7c2']; }
@@ -226,7 +227,7 @@ export class Globe {
       for (const [part, squareSize, zooms] of [['far', 32, { maxzoom: RANGE_NEAR }], ['near', 64, { minzoom: RANGE_NEAR }]] as const) {
         const id = `rng-${i}-${part}`;
         this.map.addSource(id, { type: 'raster', tiles: [gbifTiles(filter, RANGE_STYLE[r.mode], squareSize)], tileSize: 256, maxzoom: 10, attribution: 'Records: <a href="https://www.gbif.org">GBIF.org</a>' });
-        this.map.addLayer({ id, type: 'raster', source: id, ...zooms, paint: { 'raster-opacity': opacity, 'raster-fade-duration': 150 } }, 'borders');
+        this.map.addLayer({ id, type: 'raster', source: id, ...zooms, paint: { 'raster-opacity': opacity, 'raster-fade-duration': 150, ...(r.mode === 'b' ? { 'raster-hue-rotate': 180 } : {}) } }, 'borders');
         this.rangeLayers.push(id);
       }
     });

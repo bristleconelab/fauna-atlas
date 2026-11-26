@@ -1,6 +1,7 @@
 /* Static species and country pages: the globe panel's field-guide look (forest, ochre, light paper), no JavaScript. */
 @font-face { font-family: 'Bricolage Grotesque'; src: url(bricolage.woff2) format('woff2'); font-weight: 200 800; font-display: swap; }
 @font-face { font-family: 'Source Serif 4'; src: url(serif-italic.woff2) format('woff2'); font-style: italic; font-weight: 200 900; font-display: swap; }
+@font-face { font-family: 'Source Serif 4'; src: url(serif.woff2) format('woff2'); font-style: normal; font-weight: 200 900; font-display: swap; }
 :root {
   --forest: #14261c; --deep: #22402f; --ochre: #e9b44c; --paper: #f3f6f1; --ink: #1b2a20; --muted: #5b6e60;
   --line: #d6e0d3; --link: #2d6a3e; --sans: 'Bricolage Grotesque', system-ui, sans-serif; --serif: 'Source Serif 4', Georgia, serif;
@@ -36,7 +37,7 @@ main { max-width: 1040px; margin: 0 auto; padding: 18px clamp(16px, 4vw, 40px) 4
 
 .hero { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 32px; align-items: start; }
 .photo { margin: 0; border-radius: 16px; overflow: hidden; background: var(--deep); }
-.photo img { display: block; width: 100%; height: auto; aspect-ratio: 3 / 2; object-fit: cover; }
+.photo img { display: block; width: 100%; height: auto; aspect-ratio: 3 / 2; object-fit: cover; object-position: 50% 30%; }
 .photo figcaption { font-size: 12px; padding: 6px 10px; background: #fff; color: var(--muted); }
 .photo figcaption a { color: var(--muted); }
 .latin, .sci { font-family: var(--serif); font-style: italic; }
@@ -46,10 +47,10 @@ main { max-width: 1040px; margin: 0 auto; padding: 18px clamp(16px, 4vw, 40px) 4
 .iucn { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 14px; font-weight: 600; background: #dde7da; }
 .iucn-CR, .iucn-EN { background: #f2c3b5; } .iucn-VU { background: #f6dc8a; } .iucn-NT { background: #e9e6b6; }
 .iucn-EX, .iucn-EW { background: #3a3a3a; color: #fff; }
-.extract { font-family: var(--serif); font-style: italic; font-size: 19px; max-width: 46rem; }
+.extract { font-family: var(--serif); font-size: 19px; line-height: 1.6; max-width: 46rem; } /* upright: long italic text is hard to read */
 
-.map { position: relative; margin: 0; aspect-ratio: 1 / 0.71; max-width: 760px; border-radius: 14px; overflow: hidden; background: #0b2233; }
-/* the map is cut at 60° S: the tiles keep their square and overflow the box */
+.map { position: relative; margin: 0; aspect-ratio: 1 / 0.87; max-width: 760px; border-radius: 14px; overflow: hidden; background: #0b2233; }
+/* the map is cut at about 79° S: the tiles keep their square and overflow the box */
 .map > span { position: absolute; left: 0; right: 0; top: 0; aspect-ratio: 1; display: grid; grid-template-columns: 1fr 1fr; }
 .map img { width: 100%; height: 100%; display: block; }
 .facts { display: flex; flex-wrap: wrap; gap: 12px 40px; margin: 18px 0; }
@@ -61,7 +62,7 @@ main { max-width: 1040px; margin: 0 auto; padding: 18px clamp(16px, 4vw, 40px) 4
 .cards { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 16px; }
 .card { display: flex; flex-direction: column; text-decoration: none; color: var(--ink); }
 .card .ph { display: block; aspect-ratio: 3 / 2; border-radius: 10px; overflow: hidden; }
-.card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.card img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; display: block; } /* heads sit high in most animal photos */
 .card .nm { font-weight: 600; margin-top: 6px; line-height: 1.25; }
 .card .sci { font-size: 14px; color: var(--muted); }
 .card .nt { font-size: 13px; color: var(--muted); }

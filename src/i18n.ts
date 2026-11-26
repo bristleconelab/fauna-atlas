@@ -5,7 +5,7 @@ export type Lang = 'en' | 'uz';
 
 function pick(): Lang {
   try {
-    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem('lang') : null;
+    const saved = typeof window !== 'undefined' ? window.localStorage.getItem('lang') : null;
     if (saved === 'en' || saved === 'uz') return saved;
   } catch { /* storage blocked: fall through */ }
   const nav = typeof navigator !== 'undefined' ? navigator.language.toLowerCase() : 'en';
