@@ -61,6 +61,7 @@ const panel = new Panel(panelEl, $('#panel .panel-body'), {
   journeys: {
     setOverlay: (src, fc) => globe.setOverlay(src, fc),
     fitTo: (p) => globe.fitTo(p),
+    dimRange: (d) => globe.dimRange(d),
     base,
   },
   focusSearch: (placeholder) => {

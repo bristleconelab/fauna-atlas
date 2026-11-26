@@ -298,6 +298,15 @@ export function knownIndex(base: string): Promise<Record<string, KnownRow>> {
   return knownP;
 }
 
+// ---------- tag tracks (stored: scripts/fetch_tracks.py writes data/tracks/) ----------
+let trackIndexP: Promise<Record<string, number>> | null = null;
+/** Species (GBIF key) with stored tag tracks, and how many animals were drawn. Empty when the site has none. */
+export function tagTrackIndex(base: string): Promise<Record<string, number>> {
+  trackIndexP ??= fetch(`${base}data/tracks/index.json`).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  return trackIndexP;
+}
+export function tagTracks(base: string, key: number): Promise<import('./tracks').TagTracks> { return getJSON(`${base}data/tracks/${Math.trunc(key)}.json`); }
+
 // ---------- MiCO (stored, see scripts/build_mico.mjs; keyed by WoRMS id, matched here by scientific name) ----------
 export interface MicoMeta { common: string; scientific: string; group: string; sites: number; routes: number; tracked: number }
 export interface MicoIndex { source: string; species: Record<string, MicoMeta> }

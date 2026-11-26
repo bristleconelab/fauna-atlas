@@ -106,7 +106,8 @@ function style(lang: string): StyleSpecification {
       ...labelLayers(lang),
       {
         id: 'mico-routes', type: 'line', source: 'micoRoutes', layout: { 'line-cap': 'round' }, filter: ['==', ['get', 'tracked'], 1],
-        paint: { 'line-color': '#ffb3c7', 'line-width': 1.6, 'line-opacity': 0.7 },
+        // dashed too: a MiCO link joins two places, it is not the way the animals went
+        paint: { 'line-color': '#ffb3c7', 'line-width': 1.2, 'line-opacity': 0.55, 'line-dasharray': [2, 3] },
       },
       {
         id: 'mico-links', type: 'line', source: 'micoRoutes', filter: ['==', ['get', 'tracked'], 0],
@@ -154,7 +155,7 @@ function popupContent(layer: string, p: Record<string, unknown>): HTMLElement | 
       h('span', { text: `${s('species')}${n ? L(`, ${plural(n, 'animal')} in the studies behind this place`, `, bu joy ortidagi tadqiqotlarda ${fmt(n)} ta hayvon`) : ''}` }));
   }
   if (layer === 'mico-routes' || layer === 'mico-links') {
-    return h('div', { class: 'pop' }, h('strong', { text: Number(p.tracked) ? L('Followed by tagged animals', 'Belgilangan hayvonlar bosib oʻtgan') : L('Linked by other studies', 'Boshqa tadqiqotlar bogʻlagan') }),
+    return h('div', { class: 'pop' }, h('strong', { text: Number(p.tracked) ? L('Places linked by tagged animals', 'Belgilangan hayvonlar bogʻlagan joylar') : L('Places linked by other studies', 'Boshqa tadqiqotlar bogʻlagan joylar') }),
       h('span', { text: `${s('species')}${Number(p.both) ? L(', both ways', ', ikki tomonga') : ''}. ${L('The line joins the two places, not the path taken.', 'Chiziq yoʻlni emas, ikki joyni bogʻlaydi.')}` }));
   }
   return null;
@@ -229,10 +230,17 @@ export class Globe {
         this.map.addSource(id, { type: 'raster', tiles: [gbifTiles(filter, RANGE_STYLE[r.mode], squareSize)], tileSize: 256, maxzoom: 10, attribution: 'Records: <a href="https://www.gbif.org">GBIF.org</a>' });
         this.map.addLayer({ id, type: 'raster', source: id, ...zooms, paint: { 'raster-opacity': opacity, 'raster-fade-duration': 150, ...(r.mode === 'b' ? { 'raster-hue-rotate': 180 } : {}) } }, 'borders');
         this.rangeLayers.push(id);
+        this.rangeOpacity.set(id, opacity);
       }
     });
   }
   private rangeLayers: string[] = [];
+  private rangeOpacity = new Map<string, number>();
+  /** While tag tracks show, the range squares step back so the paths read; null restores them. */
+  async dimRange(dim: boolean) {
+    await this.ready;
+    for (const id of this.rangeLayers) if (this.map.getLayer(id)) this.map.setPaintProperty(id, 'raster-opacity', dim ? 0.25 : this.rangeOpacity.get(id) ?? 0.8);
+  }
 
   /** Set one of the journey overlays (micoRoutes, micoSites, tracks, heads); null clears it. */
   async setOverlay(source: 'micoRoutes' | 'micoSites' | 'tracks' | 'heads', fc: GeoJSON.FeatureCollection | null) {

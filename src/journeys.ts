@@ -1,17 +1,20 @@
 // Species-page sections about movement and time:
-//   "How it travels"      MiCO migration network for sea animals (stored; matched by scientific name or a GBIF synonym)
+//   "How it travels"      the real journeys of tagged animals (stored GPS and satellite-tag tracks from GBIF studies,
+//                         scripts/fetch_tracks.py), and for 109 sea animals the MiCO network of the places they use
+//                         (matched by scientific name or a GBIF synonym; its links join places, they are not routes)
 //   "When it is recorded"  records by month north and south of the equator, and by decade (GBIF facets)
 import * as api from './api';
 import { h, fmt, plural } from './dom';
 import { greatCircle } from './geo';
-import { ACTIVITY_COLORS, type ActivityKind } from './map';
-import { decadeCounts } from './tracks';
+import { ACTIVITY_COLORS, TRACK_COLORS, type ActivityKind } from './map';
+import { decadeCounts, trackAtHours, type TagTrack, type TagTracks } from './tracks';
 import { L, lang, MONTHS_UZ } from './i18n';
 
-export type Overlay = 'micoRoutes' | 'micoSites';
+export type Overlay = 'micoRoutes' | 'micoSites' | 'tracks' | 'heads';
 export interface JourneyHost {
   setOverlay(source: Overlay, fc: GeoJSON.FeatureCollection | null): void;
   fitTo(points: [number, number][]): void;
+  dimRange(dim: boolean): void;
   base: string;
 }
 
@@ -19,6 +22,8 @@ const FULL_MONTHS = lang === 'uz' ? MONTHS_UZ : ['January', 'February', 'March',
 const MONTHS = FULL_MONTHS.map((m) => m.slice(0, 3));
 const ext = { target: '_blank', rel: 'noopener' };
 const fc = (features: GeoJSON.Feature[]): GeoJSON.FeatureCollection => ({ type: 'FeatureCollection', features });
+const PLAY_MS = 16000;
+const MAX_LISTED = 8;
 
 /** MiCO activity words ("Breeding;Feeding", "Staging Site", "Wintering") to the few kinds the map colours. */
 export function activityKind(act: string): ActivityKind {
@@ -57,13 +62,94 @@ export interface JourneyOpts { id: number; commonName: string; sci: string; name
 
 export function renderJourneys(o: JourneyOpts, mount: HTMLElement, host: JourneyHost, alive: () => boolean): () => void {
   let stopped = false;
-  const cleanup = () => { stopped = true; host.setOverlay('micoSites', null); host.setOverlay('micoRoutes', null); };
+  let raf = 0;
+  const cleanup = () => { stopped = true; cancelAnimationFrame(raf); for (const x of ['micoSites', 'micoRoutes', 'tracks', 'heads'] as const) host.setOverlay(x, null); host.dimRange(false); };
   const ok = () => alive() && !stopped;
   const travel = h('section', { class: 'journeys', attrs: { hidden: true } }, h('h3', { text: L('How it travels', 'Qanday sayohat qiladi') }));
   const when = h('section', { class: 'seasons' }, h('h3', { text: L('When it is recorded', 'Qachon qayd etilgan') }), h('p', { class: 'fine', text: L('Loading…', 'Yuklanmoqda…') }));
   mount.append(travel, when);
 
-  // ---- MiCO, for the 109 sea animals it covers ----
+  const tagBox = h('div', { class: 'tags' });
+  const micoBox = h('div', { class: 'mico' });
+  travel.append(tagBox, micoBox);
+
+  // ---- real journeys of tagged animals ----
+  api.tagTrackIndex(host.base).then(async (idx) => {
+    if (!idx[o.id] || !ok()) return;
+    const data = await api.tagTracks(host.base, o.id).catch(() => null);
+    if (!data?.tracks.length || !ok()) return;
+    travel.hidden = false;
+    renderTracks(data);
+  });
+
+  const renderTracks = (data: TagTracks) => {
+    const drawn = data.tracks;
+    let only: number | null = null;
+    const years = (tr: TagTrack) => { const a = new Date(tr.t0 * 1000).getUTCFullYear(), b = new Date(tr.t1 * 1000).getUTCFullYear(); return a === b ? String(a) : `${a}–${b}`; };
+    const props = (tr: TagTrack, i: number) => ({ c: i, name: tr.a, km: tr.km, years: years(tr), species: o.commonName });
+    const mine = () => drawn.map((tr, i) => [tr, i] as const).filter(([, i]) => only == null || i === only);
+    const full = () => fc(mine().flatMap(([tr, i]) => tr.p.map((seg) => ({ type: 'Feature' as const, properties: props(tr, i), geometry: { type: 'LineString' as const, coordinates: seg.map(([x, y]) => [x, y]) } }))));
+    const heads = (hours: number | null) => fc(mine().flatMap(([tr, i]) => {
+      const p = hours == null ? (tr.p.at(-1)?.at(-1)?.slice(0, 2) as [number, number] | undefined) ?? null : trackAtHours(tr, hours).head;
+      return p ? [{ type: 'Feature' as const, properties: props(tr, i), geometry: { type: 'Point' as const, coordinates: p } }] : [];
+    }));
+    const draw = () => { host.setOverlay('tracks', full()); host.setOverlay('heads', heads(null)); };
+    const frameAll = () => host.fitTo(mine().flatMap(([tr]) => tr.p.flat().map(([x, y]) => [x, y] as [number, number])));
+    draw();
+    host.dimRange(true);
+    frameAll();
+
+    const play = h('button', { class: 'btn small', text: L('Play journeys', 'Yoʻllarni ijro etish') });
+    const clock = h('span', { class: 'clock', attrs: { 'aria-live': 'off' } });
+    play.addEventListener('click', () => {
+      cancelAnimationFrame(raf);
+      const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const span = Math.max(...mine().map(([tr]) => tr.p.at(-1)?.at(-1)?.[2] ?? 0), 1);
+      const t0 = performance.now();
+      let last = 0;
+      const frame = (now: number) => {
+        if (!ok()) return;
+        const f = reduce ? 1 : Math.min(1, (now - t0) / PLAY_MS);
+        if (now - last > 40 || f === 1) { // ~25 frames a second keeps the globe smooth
+          last = now;
+          const hours = f * span;
+          host.setOverlay('tracks', fc(mine().flatMap(([tr, i]) => trackAtHours(tr, hours).upto.map((part) => ({ type: 'Feature' as const, properties: props(tr, i), geometry: { type: 'LineString' as const, coordinates: part } })))));
+          host.setOverlay('heads', heads(hours));
+          const moving = mine().filter(([tr]) => (tr.p.at(-1)?.at(-1)?.[2] ?? 0) >= hours).length;
+          clock.textContent = L(`Day ${fmt(Math.round(hours / 24))} after tagging, ${plural(moving, 'animal')} still sending`, `Belgilangandan keyin ${fmt(Math.round(hours / 24))}-kun, ${fmt(moving)} ta hayvon hali signal beryapti`);
+        }
+        if (f < 1) raf = requestAnimationFrame(frame);
+        else { clock.textContent = L('Every journey, from tagging to the last signal', 'Har bir yoʻl, belgilashdan oxirgi signalgacha'); draw(); }
+      };
+      raf = requestAnimationFrame(frame);
+    });
+
+    const showAll = h('button', { class: 'link-btn', text: L('Show every animal', 'Hamma hayvonlarni koʻrsatish'), attrs: { hidden: true } });
+    const list = h('ol', { class: 'track-list' }, ...drawn.slice(0, MAX_LISTED).map((tr, i) => {
+      const b = h('button', { class: 'track-item', attrs: { 'aria-pressed': 'false' } },
+        h('span', { class: 'dot', attrs: { style: `background:${TRACK_COLORS[i % TRACK_COLORS.length]}` } }), `${tr.a}: ${fmt(tr.km)} km, ${years(tr)}`);
+      b.addEventListener('click', () => {
+        cancelAnimationFrame(raf);
+        only = only === i ? null : i;
+        list.querySelectorAll('.track-item').forEach((x, k) => x.setAttribute('aria-pressed', String(k === only)));
+        showAll.hidden = only == null;
+        draw();
+        frameAll();
+      });
+      return h('li', {}, b);
+    }));
+    showAll.addEventListener('click', () => list.querySelector<HTMLButtonElement>('.track-item[aria-pressed="true"]')?.click());
+    const dropped = drawn.reduce((a, t) => a + t.d, 0);
+    tagBox.replaceChildren(
+      h('p', { text: L(`The real journeys of ${plural(data.animals, 'tagged animal')}, from GPS and satellite tags${data.animals > drawn.length ? ` (the ${drawn.length} longest are drawn)` : ''}. The longest: ${fmt(drawn[0].km)} km. Each colour is one animal; pick one to see it alone.`,
+        `${fmt(data.animals)} ta belgilangan hayvonning GPS va sunʼiy yoʻldosh belgilaridagi haqiqiy yoʻllari${data.animals > drawn.length ? ` (eng uzun ${drawn.length} tasi chizilgan)` : ''}. Eng uzuni: ${fmt(drawn[0].km)} km. Har bir rang bitta hayvon; alohida koʻrish uchun bittasini tanlang.`) }),
+      h('div', { class: 'play-row' }, play, clock), list, showAll,
+      h('p', { class: 'fine' }, L('Tracks from ', 'Yoʻllar manbasi: '), ...data.studies.flatMap((st, i) => [i ? ', ' : '', h('a', { text: st.title, attrs: { href: st.url, ...ext } }), ` (${st.licence})`]), L(', through GBIF.', ', GBIF orqali.')),
+      h('p', { class: 'fine', text: L(`Lines follow the fixes the tags sent. Gaps of more than 20 days are left open. Fixes that would need more than ${fmt(data.cap)} km a day are dropped as location errors${dropped ? ` (${fmt(dropped)} here)` : ''}; moves under 5 km do not add to the distance.`,
+        `Chiziqlar belgilar yuborgan nuqtalar boʻylab. 20 kundan uzun uzilishlar ochiq qoldiriladi. Kuniga ${fmt(data.cap)} km dan tez harakatni talab qiladigan nuqtalar joylashuv xatosi sifatida tashlangan${dropped ? ` (bu yerda ${fmt(dropped)} ta)` : ''}; 5 km dan kichik siljishlar masofaga qoʻshilmaydi.`) }));
+  };
+
+  // ---- MiCO, for the 109 sea animals it covers: the places they use; links between them are shown on request ----
   api.micoIndex(host.base).then(async (idx) => {
     const names = new Set([o.sci, ...(o.names ?? [])].map((x) => x.toLowerCase()));
     const hit = Object.entries(idx.species).find(([, m]) => names.has(m.scientific.toLowerCase()));
@@ -76,19 +162,25 @@ export function renderJourneys(o: JourneyOpts, mount: HTMLElement, host: Journey
     const routes = fc(d.routes.map(([x1, y1, x2, y2, tracked, both]) => ({ type: 'Feature', properties: { tracked, both, species: o.commonName }, geometry: { type: 'LineString', coordinates: greatCircle([x1, y1], [x2, y2], 24) } })));
     const points = d.sites.map(([lon, lat]) => [lon, lat] as [number, number]);
     host.setOverlay('micoSites', sites);
-    host.setOverlay('micoRoutes', routes);
     const kinds = [...new Set(sites.features.map((f) => f.properties!.kind as ActivityKind))];
-    const tracked = d.routes.filter((r) => r[4]).length, inferred = d.routes.length - tracked;
+    // A link says "animals that use this place also use that one"; drawn as a line it reads as the way they went,
+    // which it is not. So the places show, and the links only when asked for, dashed and labelled.
+    let linksOn = false;
+    const links = h('button', { class: 'btn small quiet', attrs: { 'aria-pressed': 'false' }, text: L('Show which places are linked', 'Qaysi joylar bogʻliqligini koʻrsatish') });
+    links.addEventListener('click', () => {
+      linksOn = !linksOn;
+      links.setAttribute('aria-pressed', String(linksOn));
+      links.textContent = linksOn ? L('Hide the links', 'Bogʻlanishlarni yashirish') : L('Show which places are linked', 'Qaysi joylar bogʻliqligini koʻrsatish');
+      host.setOverlay('micoRoutes', linksOn ? routes : null);
+    });
     const frame = h('button', { class: 'btn small quiet', text: L('Show on the globe', 'Globusda koʻrsatish'), on: { click: () => host.fitTo(points) } });
-    travel.append(
-      h('p', { text: L(`Migration network: ${plural(d.sites.length, 'place')} where this species gathers${d.routes.length ? ` and ${plural(d.routes.length, 'link')} between them` : ''}, from published tracking and tagging studies.`,
-        `Migratsiya tarmogʻi: bu tur toʻplanadigan ${fmt(d.sites.length)} ta joy${d.routes.length ? ` va ular orasidagi ${fmt(d.routes.length)} ta bogʻlanish` : ''}; eʼlon qilingan kuzatuv va belgilash tadqiqotlaridan.`) }),
-      h('ul', { class: 'legend-dots' }, ...kinds.map((k) => h('li', {}, h('span', { class: 'dot', attrs: { style: `background:${ACTIVITY_COLORS[k]}` } }), ACTIVITY_LABEL[k])),
-        tracked ? h('li', {}, h('span', { class: 'line' }), L(`followed by tagged animals (${fmt(tracked)})`, `belgilangan hayvonlar bosib oʻtgan (${fmt(tracked)})`)) : null,
-        inferred ? h('li', {}, h('span', { class: 'line dashed' }), L(`linked by other studies (${fmt(inferred)})`, `boshqa tadqiqotlar bogʻlagan (${fmt(inferred)})`)) : null),
-      h('div', { class: 'btn-row' }, frame,
+    micoBox.append(
+      h('p', { text: L(`Places this species uses on its migrations: ${plural(d.sites.length, 'place')}${d.routes.length ? `, ${plural(d.routes.length, 'link')} between them` : ''}, from published tracking and tagging studies.`,
+        `Bu tur migratsiyada foydalanadigan joylar: ${fmt(d.sites.length)} ta joy${d.routes.length ? `, ular orasida ${fmt(d.routes.length)} ta bogʻlanish` : ''}; eʼlon qilingan kuzatuv va belgilash tadqiqotlaridan.`) }),
+      h('ul', { class: 'legend-dots' }, ...kinds.map((k) => h('li', {}, h('span', { class: 'dot', attrs: { style: `background:${ACTIVITY_COLORS[k]}` } }), ACTIVITY_LABEL[k]))),
+      h('div', { class: 'btn-row' }, frame, d.routes.length ? links : null,
         h('a', { class: 'btn small quiet', text: L('Tag tracks in Ocean Life Atlas', 'Ocean Life Atlas da belgi yoʻllari'), attrs: { href: `https://oceanlife.bristleconelab.org/#sp=${wormsId}`, ...ext } })),
-      h('p', { class: 'fine' }, L('Lines join two places the animals use, not the path swum. ', 'Chiziqlar suzilgan yoʻlni emas, hayvonlar foydalanadigan ikki joyni bogʻlaydi. '), 'MiCO, ',
+      h('p', { class: 'fine' }, L('A link means animals seen at one place were also seen at the other; it is not the way they went (dashed, straight across the globe). ', 'Bogʻlanish bir joyda koʻrilgan hayvonlar boshqasida ham koʻrilganini bildiradi; bu ular bosib oʻtgan yoʻl emas (uzuq chiziq, globus boʻylab toʻgʻri). '), 'MiCO, ',
         h('a', { text: 'Bentley et al. 2025', attrs: { href: 'https://doi.org/10.1038/s41467-025-59271-7', ...ext } }), ', CC0.'));
   }).catch(() => {});
 

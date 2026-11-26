@@ -143,3 +143,14 @@ describe('vertical range from exact values', () => {
     expect(weightedQuantile([[10, 1], [20, 1], [30, 2]], 0.5)).toBe(20);
   });
 });
+
+describe('trackAtHours', () => {
+  it('follows a journey piece by piece and interpolates the moving dot', async () => {
+    const { trackAtHours } = await import('../src/tracks');
+    const tr = { s: 0, a: 'Zuri', km: 100, d: 0, t0: 0, t1: 0, p: [[[0, 0, 0], [10, 0, 10]], [[20, 0, 40], [30, 0, 50]]] as [number, number, number][][] };
+    expect(trackAtHours(tr, 5)).toEqual({ upto: [[[0, 0], [5, 0]]], head: [5, 0] });
+    expect(trackAtHours(tr, 20).upto).toEqual([[[0, 0], [10, 0]]]); // in the silence between pieces: no line drawn across it
+    expect(trackAtHours(tr, 45).head).toEqual([25, 0]);
+    expect(trackAtHours(tr, 60).head).toBeNull();
+  });
+});
