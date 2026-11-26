@@ -1,0 +1,90 @@
+import { describe, expect, it } from 'vitest';
+import { binnedQuantile, countByGroup, groupOfKeys, interleaveGroups, rankSpecies, verticalRange, ZONES, type Taxon } from '../src/taxa';
+import { mergeGbif, rankHits } from '../src/search';
+import { monthsFromFacet, peakSeason, activityKind } from '../src/journeys';
+import { decadeCounts } from '../src/tracks';
+import { licenceShort } from '../src/api';
+
+const t = (key: number, group: Taxon['group'], records = 10): Taxon => ({ key, group, records });
+
+describe('groups (GBIF backbone keys, checked 2026-11-26)', () => {
+  it('places classes and phyla', () => {
+    expect(groupOfKeys(359, 44)).toBe('mammals');
+    expect(groupOfKeys(212, 44)).toBe('birds');
+    expect(groupOfKeys(11592253, 44)).toBe('reptiles'); // Squamata is a class in the backbone
+    expect(groupOfKeys(131, 44)).toBe('amphibians');
+    expect(groupOfKeys(216, 54)).toBe('insects');
+    expect(groupOfKeys(121, 44)).toBe('sharks');
+    expect(groupOfKeys(undefined, 52)).toBe('molluscs');
+    expect(groupOfKeys(9999, 9999)).toBe('other');
+  });
+  it('ranks by records and counts by group', () => {
+    expect(rankSpecies([t(2, 'birds', 5), t(1, 'birds', 5), t(3, 'mammals', 9)]).map((x) => x.key)).toEqual([3, 1, 2]);
+    expect(countByGroup([t(1, 'birds'), t(2, 'birds'), t(3, 'insects')]).get('birds')).toBe(2);
+  });
+  it('lets insects take a turn only every third round while vertebrates are left', () => {
+    const list = [t(1, 'insects'), t(2, 'insects'), t(3, 'insects'), t(10, 'birds'), t(11, 'birds'), t(12, 'birds'), t(13, 'birds')];
+    expect(interleaveGroups(list).map((x) => x.key)).toEqual([10, 1, 11, 12, 13, 2, 3]);
+  });
+});
+
+describe('vertical profile', () => {
+  it('interpolates inside explicit bins', () => {
+    expect(binnedQuantile([{ from: 0, to: 1000, records: 10 }], 0.5)).toBeCloseTo(500);
+    expect(binnedQuantile([], 0.5)).toBeNull();
+  });
+  it('spans land and sea on one signed scale', () => {
+    const counts = ZONES.map(() => 0);
+    counts[ZONES.findIndex((z) => z.from === 0)] = 50;        // lowlands
+    counts[ZONES.findIndex((z) => z.from === -200)] = 50;     // sunlit sea
+    const r = verticalRange(counts)!;
+    expect(r.from).toBeLessThan(0); expect(r.to).toBeGreaterThan(0); expect(r.records).toBe(100);
+  });
+  it('places a mountain animal high', () => {
+    const counts = ZONES.map((z) => (z.from === 3000 ? 80 : z.from === 2000 ? 20 : 0));
+    const r = verticalRange(counts)!;
+    expect(r.from).toBeGreaterThanOrEqual(2000); expect(r.to).toBeLessThanOrEqual(4500);
+  });
+});
+
+describe('search', () => {
+  // real GBIF species/search answer for "snow leopard", trimmed (2026-11-26)
+  const res = [
+    { key: 2435238, nubKey: 2435238, scientificName: 'Uncia uncia (Schreber, 1775)', canonicalName: 'Uncia uncia', taxonomicStatus: 'ACCEPTED', rank: 'SPECIES', classKey: 359, phylumKey: 44, vernacularNames: [{ vernacularName: 'Snow leopard' }] },
+    { key: 5787213, nubKey: 5787213, scientificName: 'Panthera uncia (Schreber, 1775)', canonicalName: 'Panthera uncia', taxonomicStatus: 'SYNONYM', acceptedKey: 2435238, rank: 'SPECIES', classKey: 359, phylumKey: 44, vernacularNames: [{ vernacularName: 'Snow Leopard' }] },
+    { key: 1878656, nubKey: 1878656, scientificName: 'Obtusipalpis pardalis Hampson, 1895', canonicalName: 'Obtusipalpis pardalis', taxonomicStatus: 'ACCEPTED', rank: 'SPECIES', classKey: 216, phylumKey: 54, vernacularNames: [{ vernacularName: 'Snow Leopard' }] },
+  ];
+  it('folds synonyms into the accepted species and marks exact common names', () => {
+    const hits = mergeGbif(res as never, 'snow leopard');
+    expect(hits.map((x) => x.id)).toEqual([2435238, 1878656]);
+    expect(hits[0].group).toBe('mammals');
+    expect(hits.every((x) => x.exact)).toBe(true);
+  });
+  it('puts the animal people record most first among exact matches', () => {
+    const hits = mergeGbif(res as never, 'snow leopard');
+    expect(rankHits(hits, new Map([[2435238, 9000], [1878656, 40]]))[0].id).toBe(2435238);
+  });
+});
+
+describe('time', () => {
+  it('reads GBIF month facets and finds a season', () => {
+    const m = monthsFromFacet([{ name: '6', count: 50 }, { name: '7', count: 60 }, { name: '8', count: 40 }, { name: '1', count: 5 }, { name: '13', count: 9 }]);
+    expect(m[5]).toBe(50); expect(m.reduce((a, b) => a + b)).toBe(155);
+    expect(peakSeason(m)).toMatchObject({ from: 5, to: 7 });
+  });
+  it('fills empty decades', () => {
+    expect(decadeCounts([{ year: 1928, records: 7 }, { year: 1958, records: 1 }]).map((d) => d.decade)).toEqual([1900, 1910, 1920, 1930, 1940, 1950]);
+  });
+  it('classifies MiCO activities', () => {
+    expect(activityKind('Spawning')).toBe('breeding');
+    expect(activityKind('Wintering')).toBe('season');
+  });
+});
+
+describe('photo licences', () => {
+  it('keeps NC and ND apart so only open photos are used', () => {
+    expect(licenceShort('http://creativecommons.org/licenses/by-nc/4.0/')).toBe('CC BY-NC');
+    expect(licenceShort('http://creativecommons.org/licenses/by/4.0/')).toBe('CC BY');
+    expect(licenceShort('http://creativecommons.org/publicdomain/zero/1.0/')).toBe('CC0');
+  });
+});

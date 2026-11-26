@@ -1,0 +1,379 @@
+/* Ocean Life Atlas. Tokens: deep water around a cool, bright field-guide panel; plankton yellow marks a species' range. */
+:root {
+  --abyss: #0b2233;
+  --deep: #12384a;
+  --seaglass: #a8d5c8;
+  --plankton: #f2c94c;
+  --foam: #f4f8f7;
+  --ink: #15303c;
+  --muted: #557080;
+  --line: #d3e1df;
+  --sans: 'Bricolage Grotesque Variable', system-ui, sans-serif;
+  --serif: 'Source Serif 4 Variable', Georgia, serif;
+  --r-panel: 18px;
+  --r-tile: 10px;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--abyss); }
+body { font: 15px/1.5 var(--sans); color: var(--ink); -webkit-font-smoothing: antialiased; }
+a { color: #11667a; text-underline-offset: 2px; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 3px solid var(--plankton); outline-offset: 2px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.latin { font-family: var(--serif); font-style: italic; font-weight: 420; }
+.fine { font-size: 13px; color: var(--muted); }
+
+#map { position: fixed; inset: 0; }
+.maplibregl-ctrl-attrib { font: 11px var(--sans); }
+
+/* ---------- top bar ---------- */
+.topbar { position: fixed; top: 16px; left: 16px; z-index: 5; display: flex; flex-direction: column; gap: 10px; width: min(380px, calc(100vw - 32px)); }
+.brand {
+  margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; line-height: 1;
+  color: var(--foam); font-variation-settings: 'wdth' 85, 'opsz' 96;
+  text-shadow: 0 1px 12px rgb(0 0 0 / 0.5);
+}
+.search { position: relative; }
+#search {
+  width: 100%; height: 46px; padding: 0 16px; border: 0; border-radius: 23px;
+  background: var(--foam); color: var(--ink); font: 16px var(--sans);
+  box-shadow: 0 6px 24px rgb(4 20 30 / 0.35);
+}
+#search::placeholder { color: #6b8693; }
+#hits {
+  position: absolute; top: 52px; left: 0; right: 0; margin: 0; padding: 6px; list-style: none;
+  background: var(--foam); border-radius: 16px; box-shadow: 0 12px 32px rgb(4 20 30 / 0.4); max-height: 60vh; overflow: auto;
+}
+#hits li { display: flex; gap: 12px; align-items: center; padding: 8px; border-radius: 10px; cursor: pointer; }
+#hits li[aria-selected='true'], #hits li:hover { background: #e3eeec; }
+#hits li.empty { cursor: default; color: var(--muted); font-size: 14px; }
+.hit-thumb { flex: none; width: 44px; height: 44px; border-radius: 8px; overflow: hidden; background: var(--deep); }
+.hit-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.hit-text { display: flex; flex-direction: column; min-width: 0; }
+.hit-name { font-weight: 600; }
+.hit-text .latin { font-size: 14px; color: var(--muted); }
+.hit-group { font-size: 12px; color: var(--muted); }
+
+#hint {
+  position: fixed; left: 50%; bottom: 36px; transform: translateX(-50%); z-index: 4; margin: 0;
+  padding: 10px 18px; border-radius: 22px; background: rgb(11 34 51 / 0.78); color: var(--foam);
+  font-size: 15px; backdrop-filter: blur(6px); pointer-events: none; white-space: nowrap;
+}
+
+/* ---------- corner ---------- */
+.corner { position: fixed; left: 16px; bottom: 16px; z-index: 5; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.corner-buttons { display: flex; gap: 8px; }
+.btn {
+  border: 0; border-radius: 20px; padding: 9px 16px; background: var(--foam); color: var(--ink); font-weight: 560;
+  box-shadow: 0 4px 16px rgb(4 20 30 / 0.3);
+}
+.btn.ghost { background: rgb(11 34 51 / 0.7); color: var(--foam); box-shadow: none; }
+#looked[aria-pressed='true'] { background: var(--seaglass); }
+#legend { width: 260px; padding: 12px 14px; border-radius: 14px; background: rgb(11 34 51 / 0.86); color: var(--foam); backdrop-filter: blur(6px); }
+#legend .fine { color: #b9cfd2; margin: 8px 0 0; }
+.legend-title { margin: 0 0 6px; font-weight: 600; }
+.ramp { height: 10px; border-radius: 5px; background: linear-gradient(90deg, #2a1d5c, #2f6f99 25%, #5fc0b0 50%, #c8ef9c 75%, #fff7c2); }
+.ramp-ticks { display: flex; justify-content: space-between; font-size: 11px; color: #b9cfd2; margin-top: 3px; }
+
+/* ---------- panel ---------- */
+#panel {
+  position: fixed; z-index: 6; top: 12px; right: 12px; bottom: 12px; width: 440px;
+  background: var(--foam); border-radius: var(--r-panel); box-shadow: 0 16px 48px rgb(4 20 30 / 0.45);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.panel-close, .about-close {
+  position: absolute; top: 10px; right: 10px; z-index: 2; width: 36px; height: 36px; border: 0; border-radius: 50%;
+  background: var(--foam); color: var(--ink); font-size: 22px; line-height: 1;
+  box-shadow: 0 2px 10px rgb(4 20 30 / 0.28);
+}
+.panel-body { overflow-y: auto; padding: 22px 22px 28px; overscroll-behavior: contain; }
+.place-head { padding-right: 40px; }
+.place-title, .sp-name {
+  margin: 0; font-size: 30px; line-height: 1.08; font-weight: 700; letter-spacing: -0.025em;
+  font-variation-settings: 'wdth' 88, 'opsz' 96; text-wrap: balance;
+}
+.sp-name.latin { font-family: var(--serif); font-weight: 500; letter-spacing: 0; }
+.place-sub { margin: 6px 0 0; color: var(--muted); }
+.summary { margin: 14px 0 12px; font-size: 16px; }
+.summary.error { color: #8a2c1d; }
+.callout { margin: 0 0 14px; padding: 10px 12px; border-left: 4px solid var(--plankton); background: #fbf3d6; border-radius: 0 8px 8px 0; font-size: 14px; }
+
+.chips { display: flex; gap: 6px; margin: 0 -22px 14px; padding: 0 22px 4px; overflow-x: auto; scrollbar-width: thin; }
+.chip { flex: none; border: 1px solid var(--line); background: #fff; border-radius: 16px; padding: 4px 11px; font-size: 13px; white-space: nowrap; }
+.chip[aria-pressed='true'] { background: var(--ink); color: var(--foam); border-color: var(--ink); }
+
+.mosaic { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 12px; }
+.tile { all: unset; box-sizing: border-box; display: flex; flex-direction: column; width: 100%; cursor: pointer; position: relative; border-radius: var(--r-tile); }
+.tile:focus-visible { outline: 3px solid var(--plankton); outline-offset: 3px; }
+.tile-photo { position: relative; aspect-ratio: 4 / 3; border-radius: var(--r-tile); overflow: hidden; background: var(--deep); margin-bottom: 7px; }
+.tile-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.35s; }
+.tile-photo img.in { opacity: 1; }
+.tile:hover .tile-photo img { transform: scale(1.03); transition: opacity 0.35s, transform 0.4s; }
+.tile-photo:has(img.in) .tile-group { display: none; }
+/* loading: a slow light sweep, so a missing photo never looks like a slow one */
+.tile-photo[data-photo='loading']::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgb(255 255 255 / 0.13) 50%, transparent 70%) 0 0 / 250% 100%;
+  animation: sweep 1.4s linear infinite;
+}
+@keyframes sweep { from { background-position: 130% 0; } to { background-position: -30% 0; } }
+.tile-photo[data-photo='none'] .tile-group::before { content: 'No photo yet. '; color: rgb(244 248 247 / 0.9); }
+.tile-group { position: absolute; left: 10px; bottom: 8px; right: 10px; font-size: 12px; color: rgb(244 248 247 / 0.7); }
+.tile-name { font-weight: 620; line-height: 1.2; }
+.tile-name:empty { display: none; }
+.tile .latin { font-size: 14px; color: var(--muted); line-height: 1.25; }
+.tile-n { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.tile .iucn { position: absolute; top: 8px; left: 8px; z-index: 1; }
+/* group colours for photo-less tiles: the colour of the water each group tends to live in */
+.g-fish { background: #1d5a6c; } .g-sharks { background: #234a63; } .g-mammals { background: #2b4058; }
+.g-turtles { background: #2c5a52; } .g-birds { background: #3d5a73; } .g-corals { background: #6b4a5e; }
+.g-molluscs { background: #4f4a6b; } .g-crustaceans { background: #6b4f3d; } .g-echinoderms { background: #6b3d3d; }
+.g-algae { background: #3d6b45; } .g-plankton { background: #355f66; } .g-other { background: #3d4f5a; }
+
+.iucn { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 620; }
+.iucn-CR { background: #c8102e; color: #fff; } .iucn-EN { background: #f07d2a; color: #1a1a1a; }
+.iucn-VU { background: #f5d90a; color: #1a1a1a; } .iucn-NT { background: #c7dfa1; } .iucn-LC { background: #dbe8d0; }
+.iucn-DD { background: #ddd; } .iucn-EX, .iucn-EW { background: #333; color: #fff; }
+
+.more { display: block; margin: 18px auto 6px; }
+
+/* species page */
+.back { border: 0; background: none; padding: 0; margin: 0 0 14px; color: #11667a; font-weight: 600; }
+.back::before { content: '‹ '; }
+.hero { margin: 0 -22px 16px; }
+.hero-frame { position: relative; min-height: 120px; background: var(--deep); }
+.hero-frame[data-photo='none'] { display: none; }
+.hero img { display: block; width: 100%; max-height: 300px; object-fit: cover; opacity: 0; transition: opacity 0.3s; }
+.hero img.in { opacity: 1; }
+.hero figcaption { padding: 4px 22px 0; font-size: 12px; color: var(--muted); }
+.panel-body > .hero:first-child { margin-top: -22px; }
+p.latin.big { margin: 4px 0 0; font-size: 18px; color: var(--muted); }
+.lineage { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
+.status { margin: 10px 0 0; font-size: 14px; }
+.about-sp .extract { margin: 16px 0 6px; font-family: var(--serif); font-size: 16px; line-height: 1.6; }
+.extract.clamped { display: -webkit-box; -webkit-line-clamp: 6; line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+.link-btn { border: 0; background: none; padding: 0; color: #11667a; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+.facts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 10px; margin: 18px 0; padding: 12px 0; border-block: 1px solid var(--line); }
+.facts dt { font-size: 12px; color: var(--muted); grid-row: 1; }
+.facts dd { margin: 0; font-size: 17px; font-weight: 620; grid-row: 2; }
+.depth h3 { margin: 6px 0 4px; font-size: 18px; letter-spacing: -0.01em; }
+.depth > p { margin: 0 0 10px; }
+.column { list-style: none; margin: 0; padding: 10px; border-radius: 12px; background: linear-gradient(#cfe9ee, #3b7f94 45%, #0b2233); }
+.column li { display: grid; grid-template-columns: minmax(0, 1fr) 92px minmax(44px, max-content); gap: 8px; align-items: center; padding: 5px 0 5px 10px; font-size: 13px; position: relative; }
+.column li.usual::before { content: ''; position: absolute; left: 0; top: 2px; bottom: 2px; width: 3px; border-radius: 2px; background: var(--plankton); }
+.column li.usual .band { font-weight: 640; }
+.column li:nth-child(n + 3) { color: var(--foam); }
+.column .bar { height: 10px; border-radius: 5px; background: rgb(255 255 255 / 0.25); position: relative; overflow: hidden; }
+.column .bar::after { content: ''; position: absolute; inset: 0 auto 0 0; width: var(--w); background: var(--plankton); border-radius: 5px; }
+.band-n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.links { display: flex; gap: 16px; margin-top: 18px; }
+
+/* about */
+#about { max-width: 600px; width: calc(100vw - 32px); border: 0; border-radius: var(--r-panel); padding: 28px 30px; color: var(--ink); background: var(--foam); position: fixed; }
+#about::backdrop { background: rgb(4 20 30 / 0.55); }
+#about h2 { margin: 0 0 10px; font-size: 26px; letter-spacing: -0.02em; }
+#about h3 { margin: 20px 0 6px; font-size: 17px; }
+#about p, #about li { max-width: 68ch; }
+.sources { padding-left: 18px; }
+.sources li { margin-bottom: 6px; }
+
+/* ---------- phones: panel becomes a bottom sheet ---------- */
+@media (max-width: 759px) {
+  .brand { font-size: 19px; }
+  #panel { top: auto; left: 0; right: 0; bottom: 0; width: auto; height: 58vh; border-radius: var(--r-panel) var(--r-panel) 0 0; transition: height 0.22s ease-out; }
+  #panel.dragging { transition: none; }
+  #panel .sheet-handle { display: block; }
+  .panel-body { padding-top: 26px; }
+  body.panel-open .corner, body.panel-open #hint { display: none; }
+  /* sheet pulled down to a peek: the globe's own buttons come back above it */
+  body.panel-open.sheet-peek .corner { display: flex; bottom: calc(30vh + 12px); }
+  body.panel-open.sheet-peek #legend { display: none; }
+  #hint { bottom: 90px; white-space: normal; text-align: center; width: max-content; max-width: calc(100vw - 48px); }
+  .corner-buttons .btn { font-size: 14px; padding: 8px 13px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+
+/* ---------- silhouettes, journeys, seasons, migrations ---------- */
+.silhouette { position: absolute; left: 50%; top: 46%; width: 46%; height: auto; transform: translate(-50%, -50%); fill: currentColor; color: rgb(244 248 247 / 0.32); }
+.tile-photo:has(img.in) .silhouette { display: none; }
+.hit-thumb { position: relative; }
+.hit-thumb .silhouette { width: 70%; top: 50%; }
+.hit-thumb:has(img.in) .silhouette { display: none; }
+.hit-thumb img { position: absolute; inset: 0; opacity: 0; }
+.hit-thumb img.in { opacity: 1; }
+
+.journeys, .seasons { margin: 22px 0 0; }
+.journeys h3, .seasons h3 { margin: 0 0 6px; font-size: 18px; letter-spacing: -0.01em; }
+.journeys p, .seasons p { margin: 0 0 8px; }
+.mico, .tags { padding: 12px 0; border-top: 1px solid var(--line); }
+.btn.small { padding: 6px 13px; font-size: 14px; box-shadow: none; background: var(--ink); color: var(--foam); }
+.btn.small[aria-pressed='true'] { background: #e3eeec; color: var(--ink); }
+.btn.small:disabled { opacity: 0.55; cursor: progress; }
+.legend-dots { list-style: none; padding: 0; margin: 4px 0 10px; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--muted); }
+.legend-dots li, .track-list li { display: flex; align-items: center; gap: 6px; }
+.dot { width: 11px; height: 11px; border-radius: 50%; border: 1.5px solid var(--abyss); flex: none; }
+.legend-dots .line { width: 18px; height: 3px; border-radius: 2px; background: #ffb3c7; outline: 1px solid rgb(11 34 51 / 0.4); }
+.play-row { display: flex; align-items: center; gap: 12px; margin: 4px 0 10px; }
+.play-row .btn { flex: none; white-space: nowrap; }
+.clock { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.track-list { list-style: none; padding: 0; margin: 0 0 8px; font-size: 14px; display: grid; gap: 3px; }
+
+.months, .decades { list-style: none; margin: 6px 0 6px; padding: 0; display: flex; align-items: flex-end; gap: 3px; }
+.months { height: 74px; }
+.decades { height: 40px; gap: 2px; }
+.months li, .decades li { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+.mbar { display: block; width: 100%; height: var(--h); min-height: 1px; border-radius: 3px 3px 0 0; background: #3b7f94; }
+.months li:hover .mbar, .decades li:hover .mbar { background: var(--ink); }
+.mlabel { font-size: 11px; color: var(--muted); margin-top: 3px; }
+
+#migrations { max-width: 560px; width: calc(100vw - 32px); max-height: 82vh; border: 0; border-radius: var(--r-panel); padding: 26px 26px 18px; color: var(--ink); background: var(--foam); }
+#migrations::backdrop { background: rgb(4 20 30 / 0.55); }
+#migrations h2 { margin: 0 0 8px; font-size: 26px; letter-spacing: -0.02em; }
+.mig-list { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 2px; }
+.mig { all: unset; box-sizing: border-box; width: 100%; display: grid; grid-template-columns: 1fr auto; column-gap: 12px; padding: 8px 10px; border-radius: 10px; cursor: pointer; }
+.mig:hover, .mig:focus-visible { background: #e3eeec; }
+.mig:focus-visible { outline: 3px solid var(--plankton); }
+.mig-name { font-weight: 620; }
+.mig .latin { grid-column: 1; font-size: 14px; color: var(--muted); }
+.mig-n { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: 13px; color: var(--muted); }
+
+/* ---------- v0.3: sheet, popups, search groups, tracks, migrations ---------- */
+.sheet-handle {
+  display: none; position: absolute; top: 0; left: 50%; transform: translateX(-50%); z-index: 3;
+  width: 96px; height: 24px; border: 0; padding: 0; background: none; touch-action: none; cursor: ns-resize;
+}
+.sheet-handle::after { content: ''; position: absolute; left: 30px; right: 30px; top: 9px; height: 5px; border-radius: 3px; background: #b7c9c8; }
+
+.maplibregl-popup.atlas-pop .maplibregl-popup-content { padding: 10px 30px 10px 12px; border-radius: 12px; background: var(--foam); color: var(--ink); font: 13px/1.4 var(--sans); box-shadow: 0 8px 24px rgb(4 20 30 / 0.4); }
+.maplibregl-popup.atlas-pop.hover .maplibregl-popup-content { padding-right: 12px; pointer-events: none; }
+.maplibregl-popup.atlas-pop .maplibregl-popup-close-button { font-size: 18px; width: 26px; height: 26px; color: var(--muted); }
+.atlas-pop .maplibregl-popup-tip { border-top-color: var(--foam); border-bottom-color: var(--foam); }
+.pop { display: grid; gap: 2px; }
+.pop strong { font-weight: 640; }
+.pop span { color: var(--muted); }
+
+#hits li.hits-head { display: block; cursor: default; padding: 8px 8px 2px; font-size: 12px; color: var(--muted); }
+#hits li.hits-head:hover { background: none; }
+.hit-thumb.place { background: #1f4d5e; color: var(--plankton); }
+.hit-thumb.place .silhouette { color: var(--plankton); opacity: 0.9; width: 56%; }
+
+.tile-skeleton { aspect-ratio: 4 / 3.9; border-radius: var(--r-tile); background: linear-gradient(100deg, #e3eeec 30%, #eef5f4 50%, #e3eeec 70%) 0 0 / 250% 100%; animation: sweep 1.4s linear infinite; }
+
+.btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 10px; }
+.btn.small.quiet { background: none; color: #11667a; box-shadow: inset 0 0 0 1.5px #b9d3d4; }
+.legend-dots .line.dashed { background: repeating-linear-gradient(90deg, #ffb3c7 0 5px, transparent 5px 9px); }
+.track-item { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 6px; width: 100%; padding: 3px 6px; margin-left: -6px; border-radius: 8px; cursor: pointer; }
+.track-item:hover { background: #e3eeec; }
+.track-item[aria-pressed='true'] { background: var(--ink); color: var(--foam); }
+.track-item:focus-visible { outline: 3px solid var(--plankton); }
+
+.decade-axis { list-style: none; margin: 0 0 6px; padding: 0; display: flex; gap: 2px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.decade-axis li { flex: 1; min-width: 0; overflow: visible; white-space: nowrap; }
+.decade-axis li:last-child { text-align: right; direction: rtl; }
+.seasons .months + p { margin-top: 10px; }
+
+#migrations { padding: 0; overflow: hidden; display: none; flex-direction: column; }
+#migrations[open] { display: flex; }
+.mig-head { position: relative; padding: 24px 26px 12px; border-bottom: 1px solid var(--line); background: var(--foam); }
+.mig-head .about-close { top: 14px; right: 14px; }
+.mig-head h2 { padding-right: 40px; }
+.mig-head p { margin: 0 0 12px; max-width: 60ch; }
+#mig-filter { width: 100%; height: 40px; padding: 0 14px; border: 1.5px solid var(--line); border-radius: 20px; background: #fff; font: 15px var(--sans); color: var(--ink); }
+#migrations .mig-list { overflow-y: auto; padding: 6px 16px 18px; margin: 0; display: block; overscroll-behavior: contain; }
+.mig-group h3 { margin: 14px 10px 4px; font-size: 15px; color: var(--muted); font-weight: 600; }
+.mig-group ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+
+/* ---------- v0.4: language, tour, survey, body, tools, compare, legend modes ---------- */
+html[lang='uz'] [data-l='en'], html:not([lang='uz']) [data-l='uz'] { display: none; }
+.lang-switch { position: fixed; top: 16px; right: 16px; z-index: 5; display: flex; border-radius: 16px; overflow: hidden; background: rgb(11 34 51 / 0.7); }
+.lang-switch button { border: 0; background: none; color: var(--foam); font-size: 13px; font-weight: 600; padding: 6px 11px; }
+.lang-switch button[aria-pressed='true'] { background: var(--foam); color: var(--ink); }
+body.panel-open .lang-switch { right: 472px; }
+
+.tour { position: fixed; left: 16px; top: 150px; z-index: 6; width: min(360px, calc(100vw - 32px)); padding: 18px 20px 14px; border-radius: var(--r-panel);
+  background: var(--foam); color: var(--ink); box-shadow: 0 16px 40px rgb(4 20 30 / 0.45); }
+.tour .about-close { top: 10px; right: 10px; }
+.tour-count { font-size: 12px; color: var(--muted); }
+.tour-title { margin: 2px 32px 6px 0; font-size: 21px; line-height: 1.15; letter-spacing: -0.015em; text-wrap: balance; }
+.tour-text { margin: 0 0 12px; font-size: 14.5px; }
+
+.survey { margin: 0 0 14px; padding: 10px 12px; border-radius: 12px; background: #e8f1ef; }
+.survey p { margin: 6px 0 0; }
+.survey p:first-child { margin-top: 0; }
+.meter { height: 8px; border-radius: 4px; background: #c9dbd8; overflow: hidden; }
+.meter span { display: block; height: 100%; width: var(--w); background: #2f8f82; border-radius: 4px; }
+
+.body-box, .tools { margin: 18px 0 0; }
+.body-box h3 { margin: 0 0 6px; font-size: 18px; letter-spacing: -0.01em; }
+.body-box > p { margin: 0 0 8px; }
+.scale { display: grid; gap: 5px; margin: 6px 0 12px; }
+.scale-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.scale-bar { display: block; height: 10px; width: var(--w); min-width: 3px; border-radius: 5px; flex: none; max-width: 70%; }
+.scale-bar.animal { background: var(--deep); }
+.scale-bar.human { background: #b9cfd2; }
+.listen audio { width: 100%; height: 36px; }
+.cite { word-break: break-word; }
+.shift-out .legend-dots { margin-top: 2px; }
+
+.compare { display: grid; grid-template-columns: 92px 1fr 1fr; gap: 6px 10px; margin: 12px 0; font-size: 14px; align-items: start; }
+.compare .ck { color: var(--muted); font-size: 13px; }
+.cmp-head { all: unset; cursor: pointer; display: grid; gap: 2px; border-radius: var(--r-tile); }
+.cmp-head:focus-visible { outline: 3px solid var(--plankton); outline-offset: 2px; }
+.cmp-head .tile-photo { margin-bottom: 4px; }
+.cmp-head.a .tile-photo { box-shadow: inset 0 -4px 0 #f2c94c; }
+.cmp-head.b .tile-photo { box-shadow: inset 0 -4px 0 #8ecbff; }
+.cmp-head .latin { font-size: 13px; color: var(--muted); }
+
+#legend .mode { display: flex; gap: 4px; margin: 0 0 10px; }
+#legend .mode button { border: 0; border-radius: 12px; padding: 4px 10px; font-size: 12.5px; background: rgb(255 255 255 / 0.1); color: var(--foam); }
+#legend .mode button[aria-pressed='true'] { background: var(--foam); color: var(--ink); }
+#legend[data-mode='records'] .legend-age, #legend[data-mode='age'] .legend-records { display: none; }
+.legend-age { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: 13px; }
+.legend-age li { display: flex; align-items: center; gap: 8px; }
+.swatch { width: 14px; height: 10px; border-radius: 3px; flex: none; }
+
+@media (max-width: 759px) {
+  .lang-switch { top: 12px; right: 12px; }
+  body.panel-open .lang-switch { display: none; }
+  .tour { top: auto; bottom: 120px; left: 12px; }
+  body.panel-open .tour { bottom: calc(58vh + 10px); }
+  .compare { grid-template-columns: 72px 1fr 1fr; }
+}
+/* five corner buttons now reach the middle of the screen: the hint sits above them */
+#hint { bottom: 84px; }
+
+/* ---------- Fauna Atlas: forest and ochre instead of abyss and plankton ---------- */
+:root {
+  --abyss: #14261c;
+  --deep: #22402f;
+  --seaglass: #b9d3a6;
+  --plankton: #e9b44c;
+  --foam: #f3f6f1;
+  --ink: #1b2a20;
+  --muted: #5b6e60;
+  --line: #d6e0d3;
+}
+a, .back, .link-btn { color: #2d6a3e; }
+.btn.small.quiet { color: #2d6a3e; box-shadow: inset 0 0 0 1.5px #bcd1bd; }
+#hits li[aria-selected='true'], #hits li:hover, .mig:hover, .mig:focus-visible, .track-item:hover { background: #e4ece2; }
+.callout { background: #f6efd9; }
+.survey { background: #e7efe4; }
+.meter { background: #cbdac6; }
+.meter span { background: #4f8a4a; }
+.ramp.fauna { background: linear-gradient(90deg, #4b1a7a, #b0368a 40%, #f08a3c 70%, #ffe26b); }
+
+.g-mammals { background: #6b5440; } .g-birds { background: #3d5a73; } .g-reptiles { background: #5a6b3d; }
+.g-amphibians { background: #3d6b4f; } .g-fish { background: #1d5a6c; } .g-sharks { background: #234a63; }
+.g-insects { background: #6b603d; } .g-spiders { background: #4f4a4a; } .g-crustaceans { background: #6b4f3d; }
+.g-molluscs { background: #4f4a6b; } .g-corals { background: #6b4a5e; } .g-echinoderms { background: #6b3d3d; }
+.g-worms { background: #6b4b52; } .g-other { background: #3d4f4a; }
+
+/* the vertical profile: sky and land above sea level, water below */
+.column.vertical { background: linear-gradient(#cfe3ef 0%, #e8efd8 22%, #b8c99a 44%, #8fb2c2 56%, #3b7f94 70%, #0b2233 100%); }
+.column.vertical li { color: var(--ink); }
+.column.vertical li.sea:nth-last-child(-n + 3) { color: #f3f6f1; }
+.column.vertical li.land + li.sea { border-top: 2px solid rgb(255 255 255 / 0.7); }
