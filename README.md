@@ -9,7 +9,7 @@
 
 [**fauna.bristleconelab.org**](https://fauna.bristleconelab.org)
 
-<a href="https://github.com/bristleconelab"><img src="public/brand/bristleconelab-mark-dark-128.png" alt="" width="24" height="24" align="absmiddle"></a>&nbsp; powered by [**bristlecone lab**](https://github.com/bristleconelab)
+<a href="https://github.com/bristleconelab"><picture><source media="(prefers-color-scheme: dark)" srcset="public/brand/bristleconelab-mark-light-128.png"><img src="public/brand/bristleconelab-mark-dark-128.png" alt="" width="24" height="24" align="absmiddle"></picture></a>&nbsp; powered by [**bristlecone lab**](https://github.com/bristleconelab)
 
 </div>
 
