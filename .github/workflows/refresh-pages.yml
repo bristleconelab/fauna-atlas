@@ -1,0 +1,83 @@
+name: Refresh page data (monthly)
+
+# Re-fetches the data behind the static animal and country pages (scripts/fetch_pages_data.py: Wikidata via QLever,
+# GBIF, Wikipedia, Commons), refuses data that is much smaller than the committed data, commits it and starts the
+# deploy, which also tells IndexNow about the refreshed pages. GBIF limits the request rate: a run takes 2-3 hours.
+
+on:
+  schedule:
+    - cron: "23 3 4 * *" # 4th of each month, 03:23 UTC
+  workflow_dispatch:
+    inputs:
+      n:
+        description: "How many species"
+        default: "3000"
+        type: string
+
+permissions:
+  contents: write # commit the refreshed data
+  actions: write # start deploy.yml: pushes made with GITHUB_TOKEN do not trigger other workflows
+
+concurrency:
+  group: refresh-pages
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - id: month
+        run: echo "m=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+      # answers are cached per month, so a re-run after a failure resumes instead of starting over
+      - uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/http-cache
+          key: pages-http-${{ steps.month.outputs.m }}-${{ github.run_id }}
+          restore-keys: pages-http-${{ steps.month.outputs.m }}-
+      - name: Fetch
+        env:
+          N: ${{ inputs.n || '3000' }}
+        run: python -I -u scripts/fetch_pages_data.py --out "$RUNNER_TEMP/pages" --cache "$RUNNER_TEMP/http-cache" --n "$N"
+      - name: Check the new data against the committed data
+        run: |
+          python -I - "$RUNNER_TEMP/pages" <<'PY'
+          import json, sys
+          new = sys.argv[1]
+          for name, floor in (("species", 0.9), ("places", 0.95)):
+              old_n = len(json.load(open(f"data/pages/{name}.json"))["rows"])
+              new_n = len(json.load(open(f"{new}/{name}.json"))["rows"])
+              print(f"{name}: {old_n} -> {new_n}")
+              if new_n < floor * old_n:
+                  sys.exit(f"::error::{name} fell from {old_n} to {new_n}; keeping the old data")
+          PY
+          cp "$RUNNER_TEMP"/pages/*.json data/pages/
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # the README names the page counts (checked by test/pages.test.ts): bring them up to date first
+      - run: node scripts/readme_counts.ts
+      - run: npm test
+      - run: npm run build
+      - name: Commit and push
+        id: commit
+        run: |
+          git config user.name ismoilovdevml
+          git config user.email 107093598+ismoilovdevml@users.noreply.github.com
+          git add data/pages README.md
+          if git diff --cached --quiet; then echo "no change"; exit 0; fi
+          git commit -m "Refresh animal and country page data ($(date -u +%F))"
+          git pull --rebase origin main
+          git push origin HEAD:main
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+      - name: Deploy the site
+        if: steps.commit.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy.yml --ref main
