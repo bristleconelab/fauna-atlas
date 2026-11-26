@@ -1,6 +1,6 @@
 // Kinds of animals a non-specialist recognises (as GBIF backbone keys), the vertical zones from the deep sea to the
 // mountain tops, and small summaries. Pure (test/taxa.test.ts).
-import { lang } from './i18n';
+import { lang } from './i18n.ts';
 
 /** A species recorded somewhere: its GBIF key, records there, and the kind of animal it is. */
 export interface Taxon {

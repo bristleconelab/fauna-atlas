@@ -17,6 +17,17 @@ describe('search engines and link previews', () => {
     expect(meta('name', 'twitter:image')).toBe(img);
   });
 
+  it('has the favicon set and the logos it links to', () => {
+    for (const f of ['favicon.svg', 'favicon.ico', 'apple-touch-icon.png', 'site.webmanifest']) {
+      expect(html, f).toContain(`href="/${f}"`);
+      expect(existsSync(`public/${f}`), f).toBe(true);
+    }
+    const manifest = JSON.parse(readFileSync('public/site.webmanifest', 'utf8')) as { icons: { src: string }[] };
+    for (const i of manifest.icons) expect(existsSync(`public${i.src}`), i.src).toBe(true);
+    for (const m of html.matchAll(/(?:src|href)="\/(brand\/[^"]+)"/g)) expect(existsSync(`public/${m[1]}`), m[1]).toBe(true);
+    for (const m of html.matchAll(/"(?:logo|image)": "https:\/\/fauna\.bristleconelab\.org\/([^"]+)"/g)) expect(existsSync(`public/${m[1]}`), m[1]).toBe(true);
+  });
+
   it('carries valid JSON-LD for the app', () => {
     const block = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/.exec(html)![1];
     const graph = JSON.parse(block)['@graph'] as Record<string, unknown>[];

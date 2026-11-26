@@ -12,12 +12,12 @@
   <meta property="og:url" content="https://fauna.bristleconelab.org/">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Fauna Atlas">
-  <meta property="og:image" content="https://fauna.bristleconelab.org/og-image.jpg">
+  <meta property="og:image" content="https://fauna.bristleconelab.org/og-image.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="A globe with East Africa outlined and a panel of animals recorded in the Serengeti: lion, lilac-breasted roller, Nile crocodile, reed frog.">
+  <meta property="og:image:alt" content="Fauna Atlas: click anywhere on Earth, see which animals live there.">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:image" content="https://fauna.bristleconelab.org/og-image.jpg">
+  <meta name="twitter:image" content="https://fauna.bristleconelab.org/og-image.png">
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -34,7 +34,7 @@
         "inLanguage": ["en", "uz"],
         "isAccessibleForFree": true,
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-        "image": "https://fauna.bristleconelab.org/og-image.jpg",
+        "image": "https://fauna.bristleconelab.org/og-image.png",
         "license": "https://opensource.org/licenses/MIT",
         "codeRepository": "https://github.com/bristleconelab/fauna-atlas",
         "about": ["Animals", "Biodiversity", "Species distribution", "Species richness"],
@@ -46,6 +46,7 @@
         "@id": "https://fauna.bristleconelab.org/#site",
         "name": "Fauna Atlas",
         "url": "https://fauna.bristleconelab.org/",
+        "image": "https://fauna.bristleconelab.org/icon-512.png",
         "publisher": { "@id": "https://fauna.bristleconelab.org/#org" }
       },
       {
@@ -53,12 +54,16 @@
         "@id": "https://fauna.bristleconelab.org/#org",
         "name": "bristlecone lab",
         "url": "https://github.com/bristleconelab",
+        "logo": "https://fauna.bristleconelab.org/brand/bristleconelab-mark-dark-512.png",
         "sameAs": ["https://github.com/bristleconelab"]
       }
     ]
   }
   </script>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%2314261c'/%3E%3Cpath d='M7 17c1-3 4-4 7-4h9l3-4 1 3 2-1-2 4c1 2 0 4-2 5v6h-2v-5h-9v5h-2v-6c-2-1-3-2-3-4z' fill='%23e9b44c'/%3E%3C/svg%3E">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
 </head>
 <body>
   <noscript>
@@ -74,7 +79,7 @@
   <div id="map" aria-label="Globe. Click anywhere to see which animals live there."></div>
 
   <header class="topbar">
-    <h1 class="brand">Fauna Atlas</h1>
+    <h1 class="brand"><img src="/brand/fauna-atlas-logo-dark.svg" alt="Fauna Atlas" width="126" height="35"></h1>
     <div class="search" role="search">
       <label for="search" class="visually-hidden" data-uz="Hayvon yoki joy qidirish">Find an animal or a place</label>
       <input id="search" type="search" autocomplete="off" spellcheck="false" placeholder="Search an animal or a place"
@@ -88,6 +93,8 @@
   <div class="lang-switch" role="group" aria-label="Language / Til">
     <button data-lang="en" lang="en">EN</button><button data-lang="uz" lang="uz">UZ</button>
   </div>
+
+  <a class="powered" href="https://github.com/bristleconelab" target="_blank" rel="noopener"><img src="/brand/bristleconelab-mark-dark-128.png" alt="" width="24" height="24"><span><span class="pw">powered </span>by <b>bristlecone lab</b></span></a>
 
   <p id="hint" data-uz="Qaysi hayvonlar yashashini koʻrish uchun istalgan joyni bosing">Click anywhere to see which animals live there</p>
 

@@ -10,13 +10,8 @@ mkdirSync(out, { recursive: true });
 
 const shots = [
   { file: 'life-here.jpg', hash: '#at=-2.33,34.83', size: [1440, 900], wait: '.tile img.in' },
-  // the link preview (og:image) is the same view at 1200 x 630
-  { file: '../../public/og-image.jpg', hash: '#at=-2.33,34.83', size: [1200, 630], wait: '.tile img.in' },
   { file: 'species.jpg', hash: '#sp=2481353', size: [1440, 900], wait: '.column.vertical' },
   { file: 'looked.jpg', hash: '#layer=looked', size: [1440, 900], wait: null },
-  { file: 'search.jpg', hash: '', size: [1440, 900], search: 'snow leopard' },
-  { file: 'compare.jpg', hash: '#sp=2435350&vs=5219404', size: [1440, 900], wait: '.cmp-head' },
-  { file: 'phone.jpg', hash: '#at=41.30,69.24', size: [390, 844], wait: '.tile img.in', mobile: true },
 ]
 
 const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] });

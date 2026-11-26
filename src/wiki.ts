@@ -1,5 +1,5 @@
 // Parsing Wikidata answers into what a species card needs. Pure (test/misc.test.ts).
-import { md5 } from './md5';
+import { md5 } from './md5.ts';
 
 /** article: a Wikipedia URL, in the reader's language when one exists (articleLang says which). */
 export interface WikiInfo { name?: string; image?: string; article?: string; articleLang?: string; sci?: string }

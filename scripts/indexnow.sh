@@ -4,11 +4,11 @@
 #
 # usage:
 #   scripts/indexnow.sh                     every URL of the live sitemap (by hand, after a deploy that changed pages)
-#   scripts/indexnow.sh --since YYYY-MM-DD  only URLs of the local public/sitemap.xml whose <lastmod> is on or after the
+#   scripts/indexnow.sh --since YYYY-MM-DD  only URLs of the local dist/sitemap.xml whose <lastmod> is on or after the
 #                                           date (the deploy workflow passes today's date after a Cloudflare deploy);
 #                                           nothing to send -> exit 0
 # DRY_RUN=1 prints the URL list instead of sending it.
-# public/sitemap.xml holds the home page only: places and species live in the URL hash, which search engines do not index.
+# dist/sitemap.xml (after npm run build) lists the home page, the index pages and every species and country page.
 set -euo pipefail
 KEY=9e54b9bbd0582b2413b4f6d48cc4a911
 HOST=fauna.bristleconelab.org
@@ -17,7 +17,7 @@ cd "$(dirname "$0")/.."
 if [ "${1:-}" = "--since" ]; then
   SINCE=${2:?--since needs a date YYYY-MM-DD}
   [[ "$SINCE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo "bad date: $SINCE" >&2; exit 2; }
-  URLS=$(python3 -I - "$SINCE" public/sitemap.xml <<'PY'
+  URLS=$(python3 -I - "$SINCE" dist/sitemap.xml <<'PY'
 import json, re, sys
 since, path = sys.argv[1], sys.argv[2]
 xml = open(path, encoding="utf-8").read()

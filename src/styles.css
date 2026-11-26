@@ -381,3 +381,32 @@ a, .back, .link-btn { color: #2d6a3e; }
 /* shown only without JavaScript (and read by crawlers that do not run it) */
 .noscript { position: relative; z-index: 5; max-width: 40rem; margin: 6rem auto; padding: 0 1.25rem; color: #f4f8f7; line-height: 1.55; }
 .noscript a { color: #e9b44c; }
+
+/* ---------- logo and "powered by" ---------- */
+.brand img { display: block; height: 35px; width: auto; filter: drop-shadow(0 1px 8px rgb(0 0 0 / 0.45)); }
+.powered {
+  position: fixed; top: 54px; right: 16px; z-index: 5; display: flex; align-items: center; gap: 7px;
+  padding: 4px 10px 4px 4px; border-radius: 14px; background: rgb(20 38 28 / 0.72); color: var(--foam);
+  font-size: 11px; line-height: 1; text-decoration: none; backdrop-filter: blur(4px);
+}
+.powered img { width: 24px; height: 24px; border-radius: 4px; display: block; } /* brand kit: never under 24 px */
+.powered b { font-weight: 650; }
+.powered:hover { background: rgb(20 38 28 / 0.9); }
+body.panel-open .powered { right: 472px; }
+@media (max-width: 759px) {
+  .brand img { height: 30px; }
+  .powered { top: 48px; right: 12px; }
+  body.panel-open .powered { display: none; }
+}
+@media (max-width: 759px) {
+  /* the badge sits on the top row, between the logo and the language switch */
+  .powered { top: 14px; right: 96px; padding: 3px 8px 3px 3px; font-size: 10px; gap: 5px; }
+  .powered .pw { display: none; }
+  /* five buttons do not fit 390 px: one row that scrolls sideways, above the map credits; pinch replaces +/- */
+  .corner { bottom: 60px; right: 0; }
+  .corner-buttons { max-width: calc(100vw - 16px); overflow-x: auto; scrollbar-width: none; padding-right: 16px; }
+  .corner-buttons::-webkit-scrollbar { display: none; }
+  .corner-buttons .btn { flex: none; white-space: nowrap; }
+  #hint { bottom: 118px; }
+  .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group { display: none; }
+}
