@@ -66,7 +66,7 @@ class Fetcher:
                 time.sleep(5 * (attempt + 1))
         else:
             raise RuntimeError('gave up on ' + url)
-        tmp = path + '.tmp'
+        tmp = f'{path}.{os.getpid()}.tmp'  # per process: two runs may fetch the same URL at once
         with open(tmp, 'w', encoding='utf-8') as f:
             json.dump(body, f)
         os.replace(tmp, path)
@@ -173,7 +173,7 @@ def species(f, n):
             'key': sp['key'], 'wikidata': c['wikidata'], 'links': c['links'],
             'sci': sp.get('canonicalName') or c['sci'], 'labelEn': c['labelEn'], 'labelUz': c['labelUz'],
             'vernacular': sp.get('vernacularName'), 'article': c['article'], 'image': commons_file(c['image']),
-            'phylumKey': sp.get('phylumKey'), 'classKey': sp.get('classKey'),
+            'phylumKey': sp.get('phylumKey'), 'classKey': sp.get('classKey'), 'orderKey': sp.get('orderKey'),
             'class': sp.get('class'), 'order': sp.get('order'), 'family': sp.get('family'),
             'records': occ['count'], 'years': [years[0], years[-1]] if years else None,
             'countries': [[x['name'], x['count']] for x in facets.get('COUNTRY', [])],
@@ -205,19 +205,20 @@ SELECT ?iso (SAMPLE(?c) AS ?item) (SAMPLE(?coord) AS ?coords) (SAMPLE(?en) AS ?l
     for c in gbif_countries:
         iso = c['iso2']
         occ = f.gbif('occurrence/search', {**CLEAN, 'kingdomKey': 1, 'country': iso, 'limit': 0,
-                                           'facet': ['classKey', 'phylumKey', 'year'], 'facetLimit': 400})
+                                           'facet': ['classKey', 'orderKey', 'phylumKey', 'year'], 'facetLimit': 1000})
         if not occ or not occ.get('count'):
             continue
         facets = {x['field']: x['counts'] for x in occ.get('facets', [])}
         years = sorted(int(y['name']) for y in facets.get('YEAR', []) if 1700 <= int(y['name']) <= 2100)
         w = wd.get(iso, {})
-        m = re.match(r'Point\(([-\d.]+) ([-\d.]+)\)', w.get('coords', {}).get('value', ''))
+        m = re.match(r'point\(([-\d.e]+) ([-\d.e]+)\)', w.get('coords', {}).get('value', ''), re.I)
         out.append({'iso': iso, 'gbifTitle': c.get('title'), 'labelEn': w.get('labelEn', {}).get('value'),
                     'labelUz': w.get('labelUz', {}).get('value'),
                     'wikidata': w['item']['value'].rsplit('/', 1)[1] if 'item' in w else None,
                     'lon': float(m.group(1)) if m else None, 'lat': float(m.group(2)) if m else None,
                     'records': occ['count'], 'years': [years[0], years[-1]] if years else None,
                     'classes': {x['name']: x['count'] for x in facets.get('CLASS_KEY', [])},
+                    'orders': {x['name']: x['count'] for x in facets.get('ORDER_KEY', [])},
                     'phyla': {x['name']: x['count'] for x in facets.get('PHYLUM_KEY', [])}})
     return out
 

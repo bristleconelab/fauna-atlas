@@ -29,6 +29,14 @@ describe('static pages: helpers', () => {
     expect(speciesName(sp({ sci: 'Sus scrofa', labelEn: 'Sus scrofa', wiki: { title: 'Wild boar', extract: '', url: '' } }))).toBe('Wild boar');
     expect(speciesName(sp({ sci: 'Panthera onca', labelEn: 'Panthera onca', wiki: { title: 'Jaguar (animal)', extract: '', url: '' } }))).toBe('Jaguar');
     expect(speciesName(sp({ sci: 'Xus yus', labelEn: null, wiki: null, vernacular: null }))).toBe('Xus yus');
+    expect(speciesName(sp({ sci: 'Branta bernicla', labelEn: 'ensis (bird)', wiki: { title: 'Brant (goose)', extract: '', url: '' } }))).toBe('Brant');
+    expect(speciesName(sp({ sci: 'Arctocephalus forsteri', labelEn: 'Arctocephalus forsteri', vernacular: 'South american fur seal, New Zealand fur seal',
+      wiki: { title: 'Arctocephalus forsteri', extract: 'The New Zealand fur seal is a species of fur seal.', url: '' } }))).toBe('New Zealand fur seal');
+    expect(speciesName(sp({ sci: 'Squatina squatina', labelEn: 'Squatina squatina', vernacular: 'Angelshark, Monkfish [shark]', wiki: null }))).toBe('Angelshark');
+  });
+  it('makes one page for two keys under one name, the better recorded', () => {
+    const m = model([sp({ key: 1, sci: 'Torgos tracheliotos', labelEn: 'Lappet-faced vulture', records: 50 }), sp({ key: 2, sci: 'Torgos tracheliotus', labelEn: 'Lappet-faced vulture', records: 900 })], []);
+    expect(m.species.map((s) => [s.key, s.slug])).toEqual([[2, 'lappet-faced-vulture']]);
   });
   it('keeps slugs unique: a shared name gets the scientific name too', () => {
     const rows = [{ n: 'Common eider', s: 'Somateria mollissima' }, { n: 'Puffin', s: 'Fratercula arctica' }, { n: 'Puffin', s: 'Fratercula corniculata' }];
@@ -40,8 +48,9 @@ describe('static pages: helpers', () => {
     expect(recordedIn(sp({}), 'DE')).toBe(0); // 147 of 17,606 = 0.8 %
     expect(recordedIn(sp({ records: 100, countries: [['UZ', 2]] }), 'UZ')).toBe(0);
   });
-  it('sums a country\'s class and phylum counts into kinds of animal', () => {
+  it('sums a country\'s class, order and phylum counts into kinds of animal', () => {
     expect(recordsByGroup(place({}))).toEqual([{ id: 'birds', records: 800000 }, { id: 'mammals', records: 50000 }, { id: 'molluscs', records: 2000 }]);
+    expect(recordsByGroup(place({ orders: { 1153: 700, 587: 300 } })).find((g) => g.id === 'fish')).toEqual({ id: 'fish', records: 1000 });
   });
   it('escapes HTML and cannot close a JSON-LD script early', () => {
     expect(esc('<b>"Tom" & Jerry\'s</b>')).toBe('&lt;b&gt;&quot;Tom&quot; &amp; Jerry&#39;s&lt;/b&gt;');
@@ -86,5 +95,17 @@ describe('static pages: country names', () => {
     const { regionName } = await import('../pages/build');
     expect(regionName('BW')).toBe('Botswana');
     expect(regionName('XX')).toBe('XX');
+  });
+});
+
+describe('static pages: README numbers match the data', () => {
+  it('names as many animal and country pages as data/pages holds', async () => {
+    const { existsSync, readFileSync } = await import('node:fs');
+    if (!existsSync('data/pages/species.json')) return; // a checkout without page data builds the globe only
+    const rows = (f: string) => (JSON.parse(readFileSync(f, 'utf8')) as { rows: never[] }).rows;
+    const m = model(rows('data/pages/species.json'), rows('data/pages/places.json'));
+    const readme = readFileSync('README.md', 'utf8');
+    expect(readme).toContain(`${m.species.length.toLocaleString('en-US')} animals`);
+    expect(readme).toContain(`${m.places.length.toLocaleString('en-US')} countries and territories`);
   });
 });

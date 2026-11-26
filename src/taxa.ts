@@ -16,14 +16,23 @@ export type GroupId =
   | 'molluscs' | 'corals' | 'echinoderms' | 'worms' | 'other';
 
 type Filter = Record<string, (string | number)[]>;
+/** Ray-finned fish orders that sit straight under phylum Chordata in the GBIF backbone: it has a class Actinopterygii
+ *  (key 204) but no record points to it (checked 2026-11-26: 0 records with classKey 204; carp is Chordata >
+ *  Cypriniformes). These 46 orders hold ~143 million records; without them most fish fell into "Everything else". */
+export const FISH_ORDERS = [
+  587, 549, 590, 1153, 538, 588, 1313, 495, 708, 772, 1103, 537, 499, 1068, 547, 1067, 550, 773, 496, 1306, 497, 548, 498,
+  1162, 1305, 1308, 774, 1106, 1167, 888, 1163, 1165, 1069, 1307, 1310, 890, 1104, 889, 494, 1166, 1164, 1312, 1311, 589,
+  1107, 1105,
+];
 /** In this order on the chips and in the mixed view. `gbif` is the occurrence-search filter for the group
- *  (GBIF backbone keys, checked 2026-11-26: the backbone has no class Reptilia, so its three orders-as-classes). */
+ *  (GBIF backbone keys, checked 2026-11-26: the backbone has no class Reptilia, so its three orders-as-classes; fish
+ *  are a `taxonKey` list, which GBIF ORs across ranks, because most of them have an order but no class). */
 export const GROUPS: { id: GroupId; label: string; uz: string; gbif?: Filter }[] = [
   { id: 'mammals', label: 'Mammals', uz: 'Sutemizuvchilar', gbif: { classKey: [359] } },
   { id: 'birds', label: 'Birds', uz: 'Qushlar', gbif: { classKey: [212] } },
   { id: 'reptiles', label: 'Reptiles', uz: 'Sudralib yuruvchilar', gbif: { classKey: [11592253, 11418114, 11493978] } },
   { id: 'amphibians', label: 'Frogs, toads and salamanders', uz: 'Baqalar va salamandralar', gbif: { classKey: [131] } },
-  { id: 'fish', label: 'Fish', uz: 'Baliqlar', gbif: { classKey: [204, 238, 119, 11881065] } },
+  { id: 'fish', label: 'Fish', uz: 'Baliqlar', gbif: { taxonKey: [204, 238, 119, 11881065, ...FISH_ORDERS] } },
   { id: 'sharks', label: 'Sharks and rays', uz: 'Akulalar va skatlar', gbif: { classKey: [121, 120] } },
   { id: 'insects', label: 'Insects', uz: 'Hasharotlar', gbif: { classKey: [216] } },
   { id: 'spiders', label: 'Spiders, scorpions and mites', uz: 'Oʻrgimchaklar, chayonlar va kanalar', gbif: { classKey: [367] } },
@@ -34,14 +43,16 @@ export const GROUPS: { id: GroupId; label: string; uz: string; gbif?: Filter }[]
   { id: 'worms', label: 'Earthworms, leeches and sea worms', uz: 'Yomgʻir chuvalchanglari, zuluklar va dengiz chuvalchanglari', gbif: { phylumKey: [42] } },
   { id: 'other', label: 'Everything else', uz: 'Boshqalar' },
 ];
-/** Which per-group species requests a square needs, from the all-animals request's class and phylum record counts.
- *  Groups with no records there are not asked. When every record falls in some group (nothing for "other") and the
- *  all-animals species list is complete, the biggest group is not asked either: its species are the ones no other
- *  group returned (`rest`). Groups are disjoint (classes inside Chordata and Arthropoda, four other phyla), so
- *  "record counts add up to the total" means every species belongs to one of them. Pure (test/taxa.test.ts). */
-export function planGroups(total: number, classCounts: Map<number, number>, phylumCounts: Map<number, number>, complete: boolean): { ask: GroupId[]; rest: GroupId } {
-  const sum = (keys: (string | number)[] | undefined, m: Map<number, number>) => (keys ?? []).reduce<number>((a, k) => a + (m.get(Number(k)) ?? 0), 0);
-  const present = GROUPS.filter((g) => g.gbif).map((g) => ({ id: g.id, n: sum(g.gbif!.classKey, classCounts) + sum(g.gbif!.phylumKey, phylumCounts) }))
+/** Every backbone key that defines a group, whatever its rank (class, order or phylum): keys are unique across ranks. */
+export const groupKeys = (g: (typeof GROUPS)[number]): number[] => Object.values(g.gbif ?? {}).flat().map(Number);
+
+/** Which per-group species requests a square needs, from the all-animals request's record counts per class, order
+ *  and phylum key (one map: keys are unique across ranks). Groups with no records there are not asked. When every
+ *  record falls in some group (nothing for "other") and the all-animals species list is complete, the biggest group
+ *  is not asked either: its species are the ones no other group returned (`rest`). Groups are disjoint, so "record
+ *  counts add up to the total" means every species belongs to one of them. Pure (test/taxa.test.ts). */
+export function planGroups(total: number, counts: Map<number, number>, complete: boolean): { ask: GroupId[]; rest: GroupId } {
+  const present = GROUPS.filter((g) => g.gbif).map((g) => ({ id: g.id, n: groupKeys(g).reduce((a, k) => a + (counts.get(k) ?? 0), 0) }))
     .filter((g) => g.n > 0);
   const inGroups = present.reduce((a, g) => a + g.n, 0);
   if (!complete || !present.length || inGroups !== total) return { ask: present.map((g) => g.id), rest: 'other' };
@@ -51,13 +62,14 @@ export function planGroups(total: number, classCounts: Map<number, number>, phyl
 
 export const GROUP_LABEL: Record<GroupId, string> = Object.fromEntries(GROUPS.map((g) => [g.id, lang === 'uz' ? g.uz : g.label])) as Record<GroupId, string>;
 
-/** Group of a GBIF species record from its class and phylum keys (for search hits and species pages). */
-export function groupOfKeys(classKey?: number, phylumKey?: number): GroupId {
-  for (const g of GROUPS) {
-    if (!g.gbif) continue;
-    if (classKey != null && g.gbif.classKey?.includes(classKey)) return g.id;
-    if (phylumKey != null && g.gbif.phylumKey?.includes(phylumKey)) return g.id;
+/** Group of a GBIF species record from its class, phylum and order keys (for search hits and species pages). */
+export function groupOfKeys(classKey?: number | null, phylumKey?: number | null, orderKey?: number | null): GroupId {
+  for (const k of [classKey, orderKey]) {
+    if (k == null) continue;
+    const g = GROUPS.find((x) => x.gbif && (x.gbif.classKey ?? x.gbif.taxonKey)?.map(Number).includes(k));
+    if (g) return g.id;
   }
+  if (phylumKey != null) return GROUPS.find((x) => x.gbif?.phylumKey?.map(Number).includes(phylumKey))?.id ?? 'other';
   return 'other';
 }
 

@@ -5,7 +5,7 @@
 // Vite plugin in vite.config.ts after the app build; pure helpers are tested in test/pages.test.ts.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { GROUPS, groupOfKeys, type GroupId } from '../src/taxa.ts';
+import { GROUPS, groupKeys, groupOfKeys, type GroupId } from '../src/taxa.ts';
 import { commonsThumbs } from '../src/wiki.ts';
 
 export const SITE = 'https://fauna.bristleconelab.org';
@@ -14,7 +14,7 @@ export const SITE = 'https://fauna.bristleconelab.org';
 export interface SpeciesRow {
   key: number; wikidata: string; links: number; sci: string; labelEn: string | null; labelUz: string | null;
   vernacular: string | null; article: string | null; image: string | null;
-  phylumKey: number | null; classKey: number | null; class: string | null; order: string | null; family: string | null;
+  phylumKey: number | null; classKey: number | null; orderKey?: number | null; class: string | null; order: string | null; family: string | null;
   records: number; years: [number, number] | null; countries: [string, number][]; redlist: string | null;
   wiki: { title: string; extract: string; url: string } | null;
   photo: { thumb: string | null; page: string | null; artist: string; licence: string } | null;
@@ -22,7 +22,7 @@ export interface SpeciesRow {
 export interface PlaceRow {
   iso: string; gbifTitle: string | null; labelEn: string | null; labelUz: string | null; wikidata: string | null;
   lat: number | null; lon: number | null; records: number; years: [number, number] | null;
-  classes: Record<string, number>; phyla: Record<string, number>;
+  classes: Record<string, number>; orders?: Record<string, number>; phyla: Record<string, number>;
 }
 
 // ---------- pure helpers ----------
@@ -41,12 +41,22 @@ export function slugify(s: string): string {
   return s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/['’ʻ]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
 
-/** Everyday English name: Wikidata's label unless it only repeats the scientific name, then the Wikipedia title
- *  (without a "(disambiguation)" part), then GBIF's vernacular name, else the scientific name. First letter capital. */
+/** Everyday English name, first letter capital: Wikidata's label, unless it only repeats the scientific name or carries
+ *  a bracketed note (Branta bernicla's label was "ensis (bird)"); then the Wikipedia title without its "(goose)"
+ *  part; then GBIF's vernacular name, which is often a list ("Common wasp, Common yellow jacket"): the entry the
+ *  Wikipedia summary uses, else the first; else the scientific name. */
 export function speciesName(r: Pick<SpeciesRow, 'labelEn' | 'sci' | 'wiki' | 'vernacular'>): string {
   const sci = r.sci.toLowerCase();
-  const title = r.wiki?.title?.replace(/\s*\([^)]*\)\s*$/, '');
-  const pick = [r.labelEn, title, r.vernacular].find((x) => x && x.toLowerCase() !== sci && !/^\d/.test(x)) ?? r.sci;
+  const ok = (x: string | null | undefined): x is string => !!x && x.toLowerCase() !== sci && !/^\d/.test(x);
+  const clean = (x: string) => x.replace(/\s*[([][^)\]]*[)\]]\s*/g, ' ').trim();
+  const fromList = (v: string | null) => {
+    const parts = (v ?? '').split(/\s*,\s*/).map(clean).filter(ok);
+    const text = (r.wiki?.extract ?? '').toLowerCase();
+    return parts.find((p) => text.includes(p.toLowerCase())) ?? parts[0];
+  };
+  const label = r.labelEn && !/[([]/.test(r.labelEn) ? r.labelEn : null;
+  const title = r.wiki?.title ? clean(r.wiki.title) : null;
+  const pick = [label, title, fromList(r.vernacular)].find(ok) ?? r.sci;
   return pick.charAt(0).toUpperCase() + pick.slice(1);
 }
 
@@ -75,9 +85,9 @@ export function recordedIn(r: Pick<SpeciesRow, 'countries' | 'records'>, iso: st
 }
 
 /** Animal records per kind from a country's class and phylum counts. */
-export function recordsByGroup(p: Pick<PlaceRow, 'classes' | 'phyla'>): { id: GroupId; records: number }[] {
-  const sum = (keys: (string | number)[] | undefined, m: Record<string, number>) => (keys ?? []).reduce<number>((a, k) => a + (m[String(k)] ?? 0), 0);
-  return GROUPS.filter((g) => g.gbif).map((g) => ({ id: g.id, records: sum(g.gbif!.classKey, p.classes) + sum(g.gbif!.phylumKey, p.phyla) }))
+export function recordsByGroup(p: Pick<PlaceRow, 'classes' | 'orders' | 'phyla'>): { id: GroupId; records: number }[] {
+  const all: Record<string, number> = { ...p.classes, ...(p.orders ?? {}), ...p.phyla }; // keys are unique across ranks
+  return GROUPS.filter((g) => g.gbif).map((g) => ({ id: g.id, records: groupKeys(g).reduce((a, k) => a + (all[String(k)] ?? 0), 0) }))
     .filter((g) => g.records > 0).sort((a, b) => b.records - a.records);
 }
 
@@ -93,7 +103,11 @@ export interface Species extends SpeciesRow { name: string; slug: string; group:
 export interface Place extends PlaceRow { name: string; slug: string; species: { sp: Species; n: number }[] }
 
 export function model(speciesRows: SpeciesRow[], placeRows: PlaceRow[]) {
-  const named = speciesRows.map((r) => ({ ...r, name: speciesName(r), group: groupOfKeys(r.classKey ?? undefined, r.phylumKey ?? undefined), slug: '' }));
+  const all = speciesRows.map((r) => ({ ...r, name: speciesName(r), group: groupOfKeys(r.classKey, r.phylumKey, r.orderKey), slug: '' }));
+  // two backbone keys under one everyday name (Torgos tracheliotos / tracheliotus): one page, the better recorded
+  const best = new Map<string, (typeof all)[number]>();
+  for (const r of all) { const k = r.name.toLowerCase(); if (!best.has(k) || best.get(k)!.records < r.records) best.set(k, r); }
+  const named = all.filter((r) => best.get(r.name.toLowerCase()) === r);
   const ss = assignSlugs(named, (r) => r.name, (r) => r.sci);
   const species: Species[] = named.map((r) => ({ ...r, slug: ss.get(r)! }));
   const pnamed = placeRows.map((p) => ({ ...p, name: p.labelEn ?? p.gbifTitle ?? p.iso, slug: '', species: [] as { sp: Species; n: number }[] }));

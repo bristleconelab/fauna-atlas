@@ -17,6 +17,9 @@ describe('groups (GBIF backbone keys, checked 2026-11-26)', () => {
     expect(groupOfKeys(121, 44)).toBe('sharks');
     expect(groupOfKeys(undefined, 52)).toBe('molluscs');
     expect(groupOfKeys(9999, 9999)).toBe('other');
+    expect(groupOfKeys(undefined, 44, 1153)).toBe('fish'); // carp: Chordata > Cypriniformes, no class in the backbone
+    expect(groupOfKeys(null, 44, 587)).toBe('fish'); // Perciformes
+    expect(groupOfKeys(undefined, 44, undefined)).toBe('other');
   });
   it('ranks by records and counts by group', () => {
     expect(rankSpecies([t(2, 'birds', 5), t(1, 'birds', 5), t(3, 'mammals', 9)]).map((x) => x.key)).toEqual([3, 1, 2]);
@@ -93,23 +96,23 @@ describe('planGroups', () => {
   const m = (o: Record<number, number>) => new Map(Object.entries(o).map(([k, v]) => [Number(k), v]));
   it('asks only the groups recorded there and leaves the biggest to subtraction when the counts add up', () => {
     // mammals 100, birds 500, insects 300 (classes), molluscs 20 (phylum): total 920
-    const p = planGroups(920, m({ 359: 100, 212: 500, 216: 300 }), m({ 44: 900, 52: 20 }), true);
+    const p = planGroups(920, m({ 359: 100, 212: 500, 216: 300, 44: 900, 52: 20 }), true);
     expect(p.rest).toBe('birds');
     expect(p.ask.sort()).toEqual(['insects', 'mammals', 'molluscs']);
   });
   it('adds the three reptile classes and the fish classes into one group each', () => {
-    const p = planGroups(60, m({ 11592253: 10, 11418114: 5, 204: 40, 238: 5 }), m({}), true);
+    const p = planGroups(60, m({ 11592253: 10, 11418114: 5, 1153: 40, 238: 5 }), true); // carp: an order, no class
     expect(p).toEqual({ ask: ['reptiles'], rest: 'fish' });
   });
   it('asks every present group when some records fall outside them (sponges, a record known only to phylum)', () => {
-    const p = planGroups(1000, m({ 359: 100, 212: 500 }), m({ 105: 400 }), true);
+    const p = planGroups(1000, m({ 359: 100, 212: 500, 105: 400 }), true);
     expect(p).toEqual({ ask: ['mammals', 'birds'], rest: 'other' });
   });
   it('asks every present group when the all-animals list was cut at the facet limit', () => {
-    expect(planGroups(600, m({ 359: 100, 212: 500 }), m({}), false)).toEqual({ ask: ['mammals', 'birds'], rest: 'other' });
+    expect(planGroups(600, m({ 359: 100, 212: 500 }), false)).toEqual({ ask: ['mammals', 'birds'], rest: 'other' });
   });
   it('asks nothing for an empty square', () => {
-    expect(planGroups(0, m({}), m({}), true)).toEqual({ ask: [], rest: 'other' });
+    expect(planGroups(0, m({}), true)).toEqual({ ask: [], rest: 'other' });
   });
 });
 

@@ -138,13 +138,13 @@ export async function gbifChecklist(wkt: string, signal?: AbortSignal, onAll?: (
   // record nearly everywhere, land and sea, so they go out with it rather than after it.
   const early = new Map(GROUPS.filter((g) => g.id === 'birds' || g.id === 'mammals').map((g) => [g.id, ask(g.gbif!)]));
   for (const p of early.values()) p.catch(() => {}); // awaited below; not an unhandled rejection meanwhile
-  const all = await ask({ facet: ['speciesKey', 'classKey', 'phylumKey'] });
+  const all = await ask({ facet: ['speciesKey', 'classKey', 'orderKey', 'phylumKey'] });
   const counts = (field: string) => all.facets?.find((f) => f.field === field)?.counts ?? [];
   const ac = counts('SPECIES_KEY');
   const truncated = ac.length >= LIMIT;
   onAll?.({ list: ac.map((x) => ({ key: Number(x.name), records: x.count, group: 'other' as const })), records: all.count, truncated });
-  const byKey = (field: string) => new Map(counts(field).map((x) => [Number(x.name), x.count]));
-  const plan = planGroups(all.count, byKey('CLASS_KEY'), byKey('PHYLUM_KEY'), !truncated);
+  const byKey = new Map(['CLASS_KEY', 'ORDER_KEY', 'PHYLUM_KEY'].flatMap((f) => counts(f).map((x) => [Number(x.name), x.count] as const)));
+  const plan = planGroups(all.count, byKey, !truncated);
   const asked = GROUPS.filter((g) => plan.ask.includes(g.id) || early.has(g.id));
   const parts = await Promise.all(asked.map((g) => early.get(g.id) ?? ask(g.gbif!)));
   const out = new Map<number, Taxon>();

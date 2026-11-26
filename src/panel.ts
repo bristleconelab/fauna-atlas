@@ -361,7 +361,7 @@ export class Panel {
     latin.textContent = sci;
     if (!common) { latin.hidden = true; name.classList.add('latin'); }
     this.species = { id, name: common ?? sci };
-    const group = groupOfKeys(sp.classKey, sp.phylumKey);
+    const group = groupOfKeys(sp.classKey, sp.phylumKey, sp.orderKey);
     lineage.textContent = [GROUP_LABEL[group], sp.family && L(`family ${sp.family}`, `${sp.family} oilasi`), sp.order && L(`order ${sp.order}`, `${sp.order} turkumi`)].filter(Boolean).join(', ');
     if (red && IUCN_LABEL[red]) { status.hidden = false; status.append(h('span', { class: `iucn iucn-${red}`, text: IUCN_LABEL[red] }), L(' on the IUCN Red List', ' — IUCN Qizil roʻyxatida')); }
 
@@ -519,7 +519,7 @@ export class Panel {
     const nm = (x: typeof A) => x.info.name ?? (lang !== 'uz' && x.sp!.vernacularName ? capital(x.sp!.vernacularName) : sciOf(x));
     const vr = (x: typeof A) => { const r = verticalRange(x.zones); return r ? `${fmt(r.from)} … ${fmt(r.to)} m` : '—'; };
     const photo = (x: typeof A) => {
-      const g = groupOfKeys(x.sp!.classKey, x.sp!.phylumKey);
+      const g = groupOfKeys(x.sp!.classKey, x.sp!.phylumKey, x.sp!.orderKey);
       const f = h('div', { class: `tile-photo g-${g}` }, silhouette(g));
       if (x.info.image) loadPhoto(f, commonsThumbs(x.info.image, 330), '', true);
       return f;
@@ -528,7 +528,7 @@ export class Panel {
     table.replaceChildren(
       h('div', { class: 'ck' }), h('button', { class: 'cmp-head a', on: { click: () => this.showSpecies(a) } }, photo(A), h('strong', { text: nm(A) }), h('span', { class: 'latin', text: sciOf(A) })),
       h('button', { class: 'cmp-head b', on: { click: () => this.showSpecies(b) } }, photo(B), h('strong', { text: nm(B) }), h('span', { class: 'latin', text: sciOf(B) })),
-      ...row(L('Kind', 'Turkum'), GROUP_LABEL[groupOfKeys(A.sp.classKey, A.sp.phylumKey)], GROUP_LABEL[groupOfKeys(B.sp.classKey, B.sp.phylumKey)]),
+      ...row(L('Kind', 'Turkum'), GROUP_LABEL[groupOfKeys(A.sp.classKey, A.sp.phylumKey, A.sp.orderKey)], GROUP_LABEL[groupOfKeys(B.sp.classKey, B.sp.phylumKey, B.sp.orderKey)]),
       ...row(L('Red List', 'Qizil kitob'), A.red ? IUCN_LABEL[A.red] ?? '—' : '—', B.red ? IUCN_LABEL[B.red] ?? '—' : '—'),
       ...row(L('Records', 'Yozuvlar'), fmt(A.total), fmt(B.total)),
       ...row(L('Usually at', 'Odatda'), vr(A), vr(B)));

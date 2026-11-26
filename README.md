@@ -27,6 +27,9 @@ An open atlas of animal life on a 3D globe, built on [GBIF](https://www.gbif.org
   animal for ten years.
 - **Compare and share.** Two species side by side, then-and-now maps, a CSV of any square's list and a link for every
   place and species. English and Uzbek.
+- **A page for each of 2,999 animals and 250 countries and territories.** [The best-known animals](https://fauna.bristleconelab.org/animals/)
+  (photo, summary, Red List, a map of records, the countries they are recorded in) and [animals by country](https://fauna.bristleconelab.org/places/),
+  plain pages that search engines read, each opening into the globe.
 
 | Any animal: where it has been recorded | Where people have looked |
 |---|---|

@@ -26,7 +26,7 @@ export function mergeGbif(results: api.GbifSpecies[], query: string, wdKeys: num
     const exact = names.includes(ql) || (r.canonicalName ?? '').toLowerCase() === ql;
     const prev = out.get(id);
     if (prev) { prev.exact ||= exact; prev.common ??= r.vernacularName; continue; }
-    out.set(id, { id, scientificName: r.canonicalName ?? r.scientificName, group: groupOfKeys(r.classKey, r.phylumKey), exact, common: r.vernacularName });
+    out.set(id, { id, scientificName: r.canonicalName ?? r.scientificName, group: groupOfKeys(r.classKey, r.phylumKey, r.orderKey), exact, common: r.vernacularName });
   }
   for (const k of wdKeys) { const x = out.get(k); if (x) x.exact = true; }
   return [...out.values()];
