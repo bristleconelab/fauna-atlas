@@ -96,3 +96,6 @@ footer .powered:hover b { text-decoration: underline; }
   .bar nav a:not(.cta) { display: none; }
   .bars li { grid-template-columns: 9rem 1fr 5.5rem; font-size: 14px; }
 }
+
+/* jump links (#mammals) land below the sticky bar, not under it */
+section[id] { scroll-margin-top: 76px; }

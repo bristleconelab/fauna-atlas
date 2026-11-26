@@ -34,6 +34,8 @@ An open atlas of animal life on a 3D globe, built on [GBIF](https://www.gbif.org
 | Any animal: where it has been recorded | Where people have looked |
 |---|---|
 | ![Atlantic puffin: records across the North Atlantic, photo, Red List status and summary](docs/img/species.jpg) | ![GBIF record density of all animals on the globe](docs/img/looked.jpg) |
+| **[A page for each animal](https://fauna.bristleconelab.org/animals/snow-leopard/)** | **[Animals by country](https://fauna.bristleconelab.org/places/kenya/)** |
+| ![The snow leopard page: photo, Red List status, Uzbek name, Wikipedia summary](docs/img/animal-page.jpg) | ![Kenya: mammals recorded there, with photos and record counts](docs/img/country-page.jpg) |
 
 ## Data
 
