@@ -34,6 +34,21 @@ export const GROUPS: { id: GroupId; label: string; uz: string; gbif?: Filter }[]
   { id: 'worms', label: 'Earthworms, leeches and sea worms', uz: 'Yomgʻir chuvalchanglari, zuluklar va dengiz chuvalchanglari', gbif: { phylumKey: [42] } },
   { id: 'other', label: 'Everything else', uz: 'Boshqalar' },
 ];
+/** Which per-group species requests a square needs, from the all-animals request's class and phylum record counts.
+ *  Groups with no records there are not asked. When every record falls in some group (nothing for "other") and the
+ *  all-animals species list is complete, the biggest group is not asked either: its species are the ones no other
+ *  group returned (`rest`). Groups are disjoint (classes inside Chordata and Arthropoda, four other phyla), so
+ *  "record counts add up to the total" means every species belongs to one of them. Pure (test/taxa.test.ts). */
+export function planGroups(total: number, classCounts: Map<number, number>, phylumCounts: Map<number, number>, complete: boolean): { ask: GroupId[]; rest: GroupId } {
+  const sum = (keys: (string | number)[] | undefined, m: Map<number, number>) => (keys ?? []).reduce<number>((a, k) => a + (m.get(Number(k)) ?? 0), 0);
+  const present = GROUPS.filter((g) => g.gbif).map((g) => ({ id: g.id, n: sum(g.gbif!.classKey, classCounts) + sum(g.gbif!.phylumKey, phylumCounts) }))
+    .filter((g) => g.n > 0);
+  const inGroups = present.reduce((a, g) => a + g.n, 0);
+  if (!complete || !present.length || inGroups !== total) return { ask: present.map((g) => g.id), rest: 'other' };
+  const biggest = present.reduce((a, b) => (b.n > a.n ? b : a));
+  return { ask: present.filter((g) => g !== biggest).map((g) => g.id), rest: biggest.id };
+}
+
 export const GROUP_LABEL: Record<GroupId, string> = Object.fromEntries(GROUPS.map((g) => [g.id, lang === 'uz' ? g.uz : g.label])) as Record<GroupId, string>;
 
 /** Group of a GBIF species record from its class and phylum keys (for search hits and species pages). */
@@ -118,6 +133,20 @@ export const ZONES: { from: number; to: number; en: string; uz: string; param: '
   { from: -4000, to: -1000, en: 'Sea, 1–4 km, midnight', uz: 'Dengiz, 1–4 km, yarim tun', param: 'depth', range: [1000, 4000] },
   { from: -11000, to: -4000, en: 'Sea, below 4 km, abyss', uz: 'Dengiz, 4 km dan pastda, tubsizlik', param: 'depth', range: [4000, 11000] },
 ];
+
+/** Records per zone (ZONES order) from GBIF facet counts of distinct elevation and depth values. A value on a zone
+ *  edge goes to the first zone that holds it, so it is counted once. */
+export function zoneCounts(elevation: { name: string; count: number }[], depth: { name: string; count: number }[]): number[] {
+  const out = ZONES.map(() => 0);
+  for (const [param, list] of [['elevation', elevation], ['depth', depth]] as const) {
+    for (const x of list) {
+      const v = Number(x.name);
+      const i = ZONES.findIndex((z) => z.param === param && v >= z.range[0] && v <= z.range[1]);
+      if (i >= 0) out[i] += x.count;
+    }
+  }
+  return out;
+}
 
 /** "Usually between 200 and 1,800 m above sea level": the middle half of records with a height or depth. */
 export function verticalRange(counts: number[]): { from: number; to: number; records: number } | null {

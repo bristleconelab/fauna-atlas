@@ -7,7 +7,7 @@
 //   Photon      https://photon.komoot.io       places by name (OpenStreetMap; made for search-as-you-type)
 //   Nominatim   https://nominatim.openstreetmap.org  the name of a clicked point on land (one request per click)
 //   Marine Regions https://www.marineregions.org  the name of a clicked point at sea
-import { GROUPS, type Taxon } from './taxa';
+import { GROUPS, planGroups, zoneCounts, ZONES, type Taxon } from './taxa';
 import { parseWikidata, type WikiInfo } from './wiki';
 
 const GBIF = 'https://api.gbif.org/v1';
@@ -17,7 +17,8 @@ const BACKBONE = 'd7dddbf4-2cf0-4f39-9b2a-bb099caae36c';
 const CLEAN = { kingdomKey: 1, hasCoordinate: 'true', hasGeospatialIssue: 'false', occurrenceStatus: 'PRESENT' };
 
 export class HttpError extends Error {
-  constructor(public status: number, url: string) { super(`HTTP ${status} for ${url}`); }
+  /** Seconds the server asked us to wait (Retry-After on 429/503), when it said. */
+  constructor(public status: number, url: string, public retryAfter?: number) { super(`HTTP ${status} for ${url}`); }
 }
 
 // ---------- fetch with retry, timeout, cancel and a bounded cache ----------
@@ -25,7 +26,11 @@ export class HttpError extends Error {
 const CACHE_MAX = 250;
 const cache = new Map<string, Promise<unknown>>();
 
-export interface GetOpts { timeoutMs?: number; signal?: AbortSignal; noCache?: boolean; init?: RequestInit }
+export interface GetOpts {
+  timeoutMs?: number; signal?: AbortSignal; noCache?: boolean; init?: RequestInit;
+  /** GBIF only: background requests (tile names and photos) wait until the panel's own requests have gone out. */
+  low?: boolean;
+}
 
 const isAbort = (e: unknown) => e instanceof DOMException && e.name === 'AbortError';
 const isTimeout = (e: unknown) => e instanceof DOMException && e.name === 'TimeoutError';
@@ -40,13 +45,17 @@ export function getJSON<T>(url: string, o: GetOpts = {}): Promise<T> {
     if (o.signal) signals.push(o.signal);
     const go = () => fetch(url, { ...o.init, signal: AbortSignal.any(signals) }).then(async (r) => {
       if (r.status === 204) return [] as T;
-      if (!r.ok) throw new HttpError(r.status, url);
+      if (!r.ok) {
+        const ra = Number(r.headers.get('retry-after'));
+        throw new HttpError(r.status, url, Number.isFinite(ra) && ra > 0 ? ra : undefined);
+      }
       return (await r.json()) as T;
     });
-    return gbif ? gbifSlot(go) : go();
+    return gbif ? gbifSlot(go, !!o.low, o.signal) : go();
   };
-  // Busy public services sometimes answer 5xx/429 or stall: try again with a pause (GBIF throttles bursts, so longer).
-  const p = retry(once, gbif ? [2000, 5000, 10000] : [1200, 3500], o.signal);
+  // Busy public services sometimes answer 5xx/429 or stall: try again with a pause. A GBIF 429 pauses every GBIF
+  // request for the time GBIF asks (see gbifSlot), so its retries need no extra wait of their own.
+  const p = retry(once, gbif ? [0, 0, 0, 0, 2000, 5000] : [1200, 3500], o.signal);
   if (!o.noCache) {
     cache.set(key, p);
     while (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value!);
@@ -55,14 +64,34 @@ export function getJSON<T>(url: string, o: GetOpts = {}): Promise<T> {
   return p;
 }
 
-/** GBIF answers 429 to bursts: at most this many of our requests are in flight at once, the rest wait their turn. */
-const GBIF_SLOTS = 4;
+/** GBIF limits the request rate per address, more or less strictly with its load (its API reference names no number;
+ *  measured 2026-11-26: 429 with Retry-After: 3 even one request at a time after ~10 quick facet requests, and
+ *  retrying hard keeps an address throttled for minutes). So: up to four of our requests in flight while GBIF answers,
+ *  down to one after a 429, back up by one every few answers; after a 429 every GBIF request waits out the pause GBIF
+ *  asked for; and the panel's own requests go before background ones (tile names and photos). */
+const GBIF_MAX = 4;
+let gbifLimit = GBIF_MAX;
+let gbifOk = 0;
 let gbifBusy = 0;
-const gbifQueue: (() => void)[] = [];
-async function gbifSlot<T>(fn: () => Promise<T>): Promise<T> {
-  if (gbifBusy >= GBIF_SLOTS) await new Promise<void>((r) => gbifQueue.push(r));
-  gbifBusy++;
-  try { return await fn(); } finally { gbifBusy--; gbifQueue.shift()?.(); }
+let gbifPausedUntil = 0;
+const gbifQueue: { high: (() => void)[]; low: (() => void)[] } = { high: [], low: [] };
+const nextGbif = () => { while (gbifBusy < gbifLimit) { const r = gbifQueue.high.shift() ?? gbifQueue.low.shift(); if (!r) return; gbifBusy++; r(); } };
+async function gbifSlot<T>(fn: () => Promise<T>, low: boolean, signal?: AbortSignal): Promise<T> {
+  if (gbifBusy < gbifLimit) gbifBusy++;
+  else await new Promise<void>((r) => gbifQueue[low ? 'low' : 'high'].push(r)); // nextGbif counts us in
+  try {
+    const wait = gbifPausedUntil - Date.now();
+    if (wait > 0 && !signal?.aborted) await new Promise((r) => setTimeout(r, wait));
+    const out = await fn();
+    if (++gbifOk >= 3 && gbifLimit < GBIF_MAX) { gbifLimit++; gbifOk = 0; }
+    return out;
+  } catch (e) {
+    if (e instanceof HttpError && e.status === 429) {
+      gbifLimit = 1; gbifOk = 0;
+      gbifPausedUntil = Math.max(gbifPausedUntil, Date.now() + 1000 * (e.retryAfter ?? 3) + Math.random() * 1000);
+    }
+    throw e;
+  } finally { gbifBusy--; nextGbif(); }
 }
 
 export function isTransient(e: unknown): boolean {
@@ -97,29 +126,51 @@ export const qs = (o: Params) => {
 /** Species recorded inside a polygon, by kind of animal. One facet request per group (in parallel): the group a
  *  species belongs to is the request that returned it, so no per-species lookup is needed. "Other" is what the
  *  all-animals request returned and no group did. */
-export async function gbifChecklist(wkt: string, signal?: AbortSignal): Promise<{ list: Taxon[]; records: number; truncated: boolean }> {
+export interface Checklist { list: Taxon[]; records: number; truncated: boolean }
+/** `onAll` gets the all-animals answer as soon as it arrives (every species as group "other"): the count, records and
+ *  Chao1 need nothing more, so the panel can show them while the per-group requests are still in GBIF's queue. */
+export async function gbifChecklist(wkt: string, signal?: AbortSignal, onAll?: (c: Checklist) => void): Promise<Checklist> {
   const LIMIT = 3000;
   const ask = (filter: Params) => getJSON<Search>(`${GBIF}/occurrence/search?${qs({
     ...CLEAN, geometry: wkt, limit: 0, facet: 'speciesKey', facetLimit: LIMIT, ...filter })}`, { signal, timeoutMs: 40000 });
-  const groups = GROUPS.filter((g) => g.gbif);
-  const [all, ...parts] = await Promise.all([ask({}), ...groups.map((g) => ask(g.gbif!))]);
+  // One request for all animals, with record counts per class and phylum: GBIF limits the request rate, so the
+  // per-group requests go out only for the kinds of animal that are there (planGroups). Birds and mammals are on
+  // record nearly everywhere, land and sea, so they go out with it rather than after it.
+  const early = new Map(GROUPS.filter((g) => g.id === 'birds' || g.id === 'mammals').map((g) => [g.id, ask(g.gbif!)]));
+  for (const p of early.values()) p.catch(() => {}); // awaited below; not an unhandled rejection meanwhile
+  const all = await ask({ facet: ['speciesKey', 'classKey', 'phylumKey'] });
+  const counts = (field: string) => all.facets?.find((f) => f.field === field)?.counts ?? [];
+  const ac = counts('SPECIES_KEY');
+  const truncated = ac.length >= LIMIT;
+  onAll?.({ list: ac.map((x) => ({ key: Number(x.name), records: x.count, group: 'other' as const })), records: all.count, truncated });
+  const byKey = (field: string) => new Map(counts(field).map((x) => [Number(x.name), x.count]));
+  const plan = planGroups(all.count, byKey('CLASS_KEY'), byKey('PHYLUM_KEY'), !truncated);
+  const asked = GROUPS.filter((g) => plan.ask.includes(g.id) || early.has(g.id));
+  const parts = await Promise.all(asked.map((g) => early.get(g.id) ?? ask(g.gbif!)));
   const out = new Map<number, Taxon>();
-  let truncated = false;
-  groups.forEach((g, i) => {
+  let cut = truncated;
+  asked.forEach((g, i) => {
     const c = parts[i].facets?.[0]?.counts ?? [];
-    if (c.length >= LIMIT) truncated = true;
+    if (c.length >= LIMIT) cut = true;
     for (const x of c) out.set(Number(x.name), { key: Number(x.name), records: x.count, group: g.id });
   });
-  const ac = all.facets?.[0]?.counts ?? [];
-  if (ac.length >= LIMIT) truncated = true;
-  for (const x of ac) if (!out.has(Number(x.name))) out.set(Number(x.name), { key: Number(x.name), records: x.count, group: 'other' });
-  return { list: [...out.values()], records: all.count, truncated };
+  for (const x of ac) if (!out.has(Number(x.name))) out.set(Number(x.name), { key: Number(x.name), records: x.count, group: plan.rest });
+  return { list: [...out.values()], records: all.count, truncated: cut };
 }
 
 /** Occurrence count for any filter (animals, clean coordinates). */
 export async function gbifCount(filter: Params, signal?: AbortSignal): Promise<number> {
   const r = await getJSON<Search>(`${GBIF}/occurrence/search?${qs({ ...CLEAN, limit: 0, ...filter })}`, { signal });
   return r.count;
+}
+/** Records per vertical zone (ZONES) for a species: one request faceting the distinct elevation and depth values,
+ *  instead of one count per zone (GBIF limits the request rate). Falls back to the counts if a facet list is cut. */
+export async function gbifVertical(key: number, signal?: AbortSignal): Promise<number[]> {
+  const LIMIT = 5000;
+  const r = await getJSON<Search>(`${GBIF}/occurrence/search?${qs({ ...CLEAN, taxonKey: key, limit: 0, facet: ['elevation', 'depth'], facetLimit: LIMIT })}`, { signal });
+  const f = (field: string) => r.facets?.find((x) => x.field === field)?.counts ?? [];
+  if (f('ELEVATION').length < LIMIT && f('DEPTH').length < LIMIT) return zoneCounts(f('ELEVATION'), f('DEPTH'));
+  return Promise.all(ZONES.map((z) => gbifCount({ taxonKey: key, [z.param]: `${z.range[0]},${z.range[1]}` }, signal).catch(() => 0)));
 }
 /** Facet counts (month, year...) for any filter. */
 export async function gbifFacet(filter: Params, facet: string, limit = 400, signal?: AbortSignal): Promise<{ name: string; count: number }[]> {
@@ -132,8 +183,8 @@ export interface GbifSpecies {
   acceptedKey?: number; kingdom?: string; phylum?: string; class?: string; order?: string; family?: string;
   phylumKey?: number; classKey?: number; orderKey?: number; nubKey?: number;
 }
-export function gbifSpecies(key: number, signal?: AbortSignal): Promise<GbifSpecies> {
-  return getJSON(`${GBIF}/species/${Math.trunc(key)}`, { signal });
+export function gbifSpecies(key: number, signal?: AbortSignal, low = false): Promise<GbifSpecies> {
+  return getJSON(`${GBIF}/species/${Math.trunc(key)}`, { signal, low });
 }
 /** Backbone key of the accepted species for a scientific name (exact matches only). */
 export async function gbifMatch(name: string): Promise<number | null> {
@@ -179,9 +230,9 @@ export async function gbifSuggest(text: string, signal?: AbortSignal): Promise<G
 /** One openly licensed photo from iNaturalist research-grade records in GBIF, for species Wikidata has none for. */
 const INAT = '50c9509d-22c7-4a22-a47d-8c48425ef4a7';
 export interface Photo { url: string; credit: string; licence: string; page: string }
-export async function gbifPhoto(key: number, signal?: AbortSignal): Promise<Photo | null> {
+export async function gbifPhoto(key: number, signal?: AbortSignal, low = false): Promise<Photo | null> {
   const r = await getJSON<{ results: { key: number; media?: { identifier?: string; license?: string; rightsHolder?: string }[] }[] }>(
-    `${GBIF}/occurrence/search?${qs({ taxonKey: key, mediaType: 'StillImage', datasetKey: INAT, limit: 10 })}`, { signal }).catch(() => null);
+    `${GBIF}/occurrence/search?${qs({ taxonKey: key, mediaType: 'StillImage', datasetKey: INAT, limit: 10 })}`, { signal, low }).catch(() => null);
   for (const o of r?.results ?? []) for (const m of o.media ?? []) {
     const lic = licenceShort(m.license ?? '');
     if (!m.identifier || !/^(CC0|CC BY|CC BY-SA)$/.test(lic)) continue; // open licences only, no NC or ND

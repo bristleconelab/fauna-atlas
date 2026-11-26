@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { binnedQuantile, countByGroup, groupOfKeys, interleaveGroups, rankSpecies, verticalRange, ZONES, type Taxon } from '../src/taxa';
+import { binnedQuantile, countByGroup, groupOfKeys, interleaveGroups, planGroups, rankSpecies, zoneCounts, verticalRange, ZONES, type Taxon } from '../src/taxa';
 import { mergeGbif, rankHits } from '../src/search';
 import { monthsFromFacet, peakSeason, activityKind } from '../src/journeys';
 import { decadeCounts } from '../src/tracks';
@@ -86,5 +86,39 @@ describe('photo licences', () => {
     expect(licenceShort('http://creativecommons.org/licenses/by-nc/4.0/')).toBe('CC BY-NC');
     expect(licenceShort('http://creativecommons.org/licenses/by/4.0/')).toBe('CC BY');
     expect(licenceShort('http://creativecommons.org/publicdomain/zero/1.0/')).toBe('CC0');
+  });
+});
+
+describe('planGroups', () => {
+  const m = (o: Record<number, number>) => new Map(Object.entries(o).map(([k, v]) => [Number(k), v]));
+  it('asks only the groups recorded there and leaves the biggest to subtraction when the counts add up', () => {
+    // mammals 100, birds 500, insects 300 (classes), molluscs 20 (phylum): total 920
+    const p = planGroups(920, m({ 359: 100, 212: 500, 216: 300 }), m({ 44: 900, 52: 20 }), true);
+    expect(p.rest).toBe('birds');
+    expect(p.ask.sort()).toEqual(['insects', 'mammals', 'molluscs']);
+  });
+  it('adds the three reptile classes and the fish classes into one group each', () => {
+    const p = planGroups(60, m({ 11592253: 10, 11418114: 5, 204: 40, 238: 5 }), m({}), true);
+    expect(p).toEqual({ ask: ['reptiles'], rest: 'fish' });
+  });
+  it('asks every present group when some records fall outside them (sponges, a record known only to phylum)', () => {
+    const p = planGroups(1000, m({ 359: 100, 212: 500 }), m({ 105: 400 }), true);
+    expect(p).toEqual({ ask: ['mammals', 'birds'], rest: 'other' });
+  });
+  it('asks every present group when the all-animals list was cut at the facet limit', () => {
+    expect(planGroups(600, m({ 359: 100, 212: 500 }), m({}), false)).toEqual({ ask: ['mammals', 'birds'], rest: 'other' });
+  });
+  it('asks nothing for an empty square', () => {
+    expect(planGroups(0, m({}), m({}), true)).toEqual({ ask: [], rest: 'other' });
+  });
+});
+
+describe('zoneCounts', () => {
+  it('bins facet values into the vertical zones, edges counted once, depth 0 and out-of-range values left out', () => {
+    const z = zoneCounts(
+      [{ name: '2000.0', count: 747 }, { name: '2400.0', count: 3 }, { name: '150.0', count: 10 }, { name: '-5.0', count: 2 }, { name: '9500.0', count: 1 }],
+      [{ name: '0.0', count: 400 }, { name: '999.0', count: 6 }, { name: '12.0', count: 4 }],
+    );
+    expect(z).toEqual([0, 0, 750, 0, 10, 4, 6, 0, 0]);
   });
 });

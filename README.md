@@ -46,9 +46,9 @@ The site is static: no server, everything is fetched live by the browser from op
 
 | Question | Source |
 |---|---|
-| Which animals were recorded in this square | GBIF `occurrence/search` with `facet=speciesKey`, one request per kind of animal (class or phylum keys of the GBIF backbone), so the kind comes with the answer; animals only, clean coordinates, `occurrenceStatus=PRESENT` |
+| Which animals were recorded in this square | GBIF `occurrence/search` with `facet=speciesKey`: one request for all animals (with record counts per class and phylum, so the count and completeness show at once), then one per kind of animal that is there (class or phylum keys of the GBIF backbone), so the kind comes with the answer; when every record belongs to a known kind, the biggest kind is what the others leave over and is not asked; animals only, clean coordinates, `occurrenceStatus=PRESENT` |
 | Where a species has been recorded, where people looked | GBIF map API density tiles (hexagons); `year=` for then and now and for the last ten years |
-| Height and depth | nine GBIF counts per species (`elevation` and `depth` ranges); the text gives the middle half of the records; depth starts at 0.5 m because many land datasets fill `depth = 0` |
+| Height and depth | one GBIF request per species faceting its distinct `elevation` and `depth` values, binned into nine zones (one count per zone if a facet list is cut); the text gives the middle half of the records; depth starts at 0.5 m because many land datasets fill `depth = 0` |
 | Months and decades | GBIF `month` facets north and south of the equator, `year` facet |
 | Search | GBIF `species/search` and `species/suggest` (backbone, animals), Wikidata `wbsearchentities` mapped to GBIF keys through P846, Photon (OpenStreetMap) for places; ranked by exact name, then by GBIF record count (one facet request) |
 | Name of a clicked point | Nominatim reverse geocoding (one request per click), Marine Regions at sea |
@@ -57,7 +57,11 @@ The site is static: no server, everything is fetched live by the browser from op
 | Sea migrations | MiCO (stored in `public/data/mico/`, matched by scientific name) |
 | Inventory completeness | bias-corrected Chao1 from records per species (only when no kind of animal hits the 3,000-species facet limit, because the missing tail is the rare species Chao1 needs) |
 
-GBIF throttles bursts (HTTP 429), so the site keeps at most four GBIF requests in flight and retries with longer pauses.
+GBIF limits the request rate per address, more or less strictly with its load (HTTP 429 with `Retry-After`). The site
+keeps up to four GBIF requests in flight, drops to one after a 429 and waits out the pause GBIF asked for, and sends
+the panel's own requests before background ones (tile names and photos). Replaying a square's requests from one
+address four times in a row (2026-11-26): about 5 s and no 429 per square, against about 6.4 s and one to three 429s
+with the earlier fixed four-at-a-time pattern.
 
 ## Honest limits
 
@@ -91,7 +95,7 @@ Code: MIT (see `LICENSE`).
 ```sh
 npm install
 npm run dev        # http://localhost:5173/ (scripts/screenshots.mjs expects port 5299)
-npm test           # unit tests (groups, vertical profile, search merge, seasons, Chao1, traits, geohash, names)
+npm test           # unit tests (groups, request plan, vertical profile, GBIF request gate, search merge, seasons, Chao1, traits, geohash, names)
 npm run build      # typecheck + production build in dist/
 npm run mico       # rebuild public/data/mico/ from the MiCO Zenodo archive
 ```

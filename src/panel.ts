@@ -106,12 +106,29 @@ export class Panel {
       sub.hidden = false;
     });
 
+    const tell = (n: number, rec: number) => {
+      summary.textContent = L(`${plural(n, 'species', 'species')} of animals recorded in ${area}, from ${fmt(rec)} records.`,
+        `${area} ichida ${fmt(rec)} ta yozuvdan ${fmt(n)} ta hayvon turi qayd etilgan.`);
+    };
+    // The all-animals answer comes first: count, records and completeness show while the kinds are still sorting.
+    let survey: HTMLElement | null = null;
+    const sorting = h('div', { class: 'sorting' },
+      h('p', { class: 'fine', text: L('Sorting them by kind of animal…', 'Hayvon turkumlari boʻyicha saralanmoqda…') }),
+      h('ul', { class: 'mosaic' }, ...Array.from({ length: 6 }, () => h('li', { class: 'tile-skeleton', attrs: { 'aria-hidden': 'true' } }))));
+    const early = (c: api.Checklist) => {
+      if (t !== this.token || !c.list.length) return;
+      tell(c.list.length, c.records);
+      survey = this.surveyBox(c.list, !c.truncated, wkt, signal, t);
+      this.body.append(survey, sorting);
+    };
+
     let list: Taxon[], records: number, truncated: boolean;
     try {
-      const r = await api.gbifChecklist(wkt, signal);
+      const r = await api.gbifChecklist(wkt, signal, early);
       list = rankSpecies(r.list); records = r.records; truncated = r.truncated;
     } catch (e) {
       if (t !== this.token) return;
+      sorting.remove();
       summary.textContent = L('The species list did not load. GBIF may be busy; try the same spot again in a moment.', 'Turlar roʻyxati yuklanmadi. GBIF band boʻlishi mumkin; birozdan keyin shu joyni qayta bosing.');
       summary.classList.add('error');
       this.body.append(h('button', { class: 'btn', text: L('Try again', 'Qayta urinish'), on: { click: () => this.showPlace(lat, lon) } }));
@@ -123,10 +140,10 @@ export class Panel {
       summary.textContent = L('Nobody has recorded an animal in this square yet. Switch on "Where people have looked" to find well-studied ground.', 'Bu kvadratda hali hech kim hayvon qayd etmagan. Yaxshi oʻrganilgan joylarni topish uchun "Odamlar qayerni oʻrgangan" qatlamini yoqing.');
       return;
     }
-    summary.textContent = L(`${plural(list.length, 'species', 'species')} of animals recorded in ${area}, from ${fmt(records)} records.`,
-      `${area} ichida ${fmt(records)} ta yozuvdan ${fmt(list.length)} ta hayvon turi qayd etilgan.`);
-    if (truncated) this.body.append(h('p', { class: 'fine', text: L('One kind of animal here has more than 3,000 species on record; the list shows its 3,000 most recorded.', 'Bu yerdagi bir turkumda 3 000 dan ortiq tur bor; roʻyxatda uning eng koʻp qayd etilgan 3 000 tasi.') }));
-    this.body.append(this.surveyBox(list, !truncated, wkt, signal, t));
+    sorting.remove();
+    tell(list.length, records);
+    survey ??= this.body.appendChild(this.surveyBox(list, !truncated, wkt, signal, t));
+    if (truncated) survey.before(h('p', { class: 'fine', text: L('One kind of animal here has more than 3,000 species on record; the list shows its 3,000 most recorded.', 'Bu yerdagi bir turkumda 3 000 dan ortiq tur bor; roʻyxatda uning eng koʻp qayd etilgan 3 000 tasi.') }));
     if (records < FEW_RECORDS) this.body.append(h('p', { class: 'callout', text: L('Few people have looked here. Most of the animals in this square have never been recorded, so this list is only a start.', 'Bu yerni kam odam oʻrgangan. Bu kvadratdagi hayvonlarning katta qismi hech qachon qayd etilmagan, shuning uchun roʻyxat faqat boshlanishi.') }));
 
     const counts = countByGroup(list);
@@ -222,12 +239,12 @@ export class Panel {
   private async fillFromGbif(keys: number[], t: number, apply: (k: number) => void) {
     for (let i = 0; i < keys.length && t === this.token; i += 6) {
       await Promise.all(keys.slice(i, i + 6).map(async (k) => {
-        const sp = await api.gbifSpecies(k).catch(() => null);
+        const sp = await api.gbifSpecies(k, undefined, true).catch(() => null);
         if (!sp || t !== this.token) return;
         const kn = this.known.get(k) ?? {};
         kn.sci ??= sp.canonicalName ?? sp.scientificName;
         if (!kn.name && sp.vernacularName && lang !== 'uz') kn.name = capital(sp.vernacularName);
-        if (!kn.image && !kn.photo) kn.photo = (await api.gbifPhoto(k).catch(() => null)) ?? undefined;
+        if (!kn.image && !kn.photo) kn.photo = (await api.gbifPhoto(k, undefined, true).catch(() => null)) ?? undefined;
         this.known.set(k, kn);
         apply(k);
       }));
@@ -401,7 +418,7 @@ export class Panel {
 
   /** From the deep sea to the mountain tops: where along the vertical its records lie. */
   private async renderVertical(box: HTMLElement, id: number, signal: AbortSignal, t: number) {
-    const counts = await Promise.all(ZONES.map((z) => api.gbifCount({ taxonKey: id, [z.param]: `${z.range[0]},${z.range[1]}` }, signal).catch(() => 0)));
+    const counts = await api.gbifVertical(id, signal).catch(() => ZONES.map(() => 0));
     if (t !== this.token) return;
     const r = verticalRange(counts);
     if (!r) return;
@@ -491,7 +508,7 @@ export class Panel {
       const [sp, total, red, info, zones] = await Promise.all([
         api.gbifSpecies(id, signal).catch(() => null), api.gbifCount({ taxonKey: id }, signal).catch(() => 0), api.gbifRedList(id),
         api.wikidataByAphia([id], undefined, this.lang, signal).then((m) => m.get(id) ?? {}).catch(() => ({} as WikiInfo)),
-        Promise.all(ZONES.map((z) => api.gbifCount({ taxonKey: id, [z.param]: `${z.range[0]},${z.range[1]}` }, signal).catch(() => 0))),
+        api.gbifVertical(id, signal).catch(() => ZONES.map(() => 0)),
       ]);
       return { id, sp, total, red, info, zones };
     };
