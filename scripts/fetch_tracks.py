@@ -26,7 +26,8 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from fetch_pages_data import CLEAN, Fetcher  # noqa: E402
 
-MAX_ROWS = 15000        # rows read per species at most (50 GBIF pages)
+MAX_ROWS = 9900         # rows read per species at most (33 GBIF pages): past offset 10,000 GBIF pages slow to minutes
+                        # each (a King Eider study hung there for half an hour), and GBIF limits deep paging itself
 MAX_TRACKS = 40         # animals written per species (the longest paths)
 MAX_POINTS = 400        # fixes per animal after thinning
 MIN_FIXES = 5
@@ -217,7 +218,7 @@ def tag_studies(f, key):
 
 def study_rows(f, key, dataset, total):
     rows, offset = [], 0
-    while offset < total and offset < 100000:
+    while offset < total and offset < MAX_ROWS:
         page = f.gbif('occurrence/search', {**CLEAN, 'taxonKey': key, 'datasetKey': dataset, 'basisOfRecord': 'MACHINE_OBSERVATION',
                                             'limit': 300, 'offset': offset}) or {}
         res = page.get('results', [])
