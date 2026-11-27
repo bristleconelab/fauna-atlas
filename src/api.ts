@@ -406,7 +406,7 @@ export function speciesQuery(ids: number[], lang: string, by: 'aphia' | 'name' =
   (SAMPLE(?cnEn) AS ?commonEn) (SAMPLE(?labEn) AS ?labelEn) (SAMPLE(?art) AS ?article) (SAMPLE(?artEn) AS ?articleEn) (SAMPLE(?sciName) AS ?sci) WHERE {
   VALUES ?${by} { ${values} }
   ${match}
-  OPTIONAL { ?item wdt:P18 ?img }
+  OPTIONAL { ?item wdt:P18 ?img FILTER(!REGEX(STR(?img), "\\\\.(svg|gif)$", "i")) } # a photo, not a drawing
   OPTIONAL { ?item wdt:P225 ?sciName }
   OPTIONAL { ?item wdt:P1843 ?cn FILTER(LANG(?cn) = "${l}") }
   OPTIONAL { ?item rdfs:label ?lab FILTER(LANG(?lab) = "${l}") }

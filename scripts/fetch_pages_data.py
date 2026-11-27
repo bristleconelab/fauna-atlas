@@ -291,7 +291,7 @@ SELECT ?iso (SAMPLE(?c) AS ?item) (SAMPLE(?coord) AS ?coords) (SAMPLE(?en) AS ?l
         if not occ or not occ.get('count'):
             continue
         facets = {x['field']: x['counts'] for x in occ.get('facets', [])}
-        years = sorted(int(y['name']) for y in facets.get('YEAR', []) if 1700 <= int(y['name']) <= 2100)
+        years = sorted(int(y['name']) for y in facets.get('YEAR', []) if 1758 <= int(y['name']) <= int(time.strftime('%Y')))  # 1758: Linnaeus; 1700 is a placeholder
         w = wd.get(iso, {})
         m = re.match(r'point\(([-\d.e]+) ([-\d.e]+)\)', w.get('coords', {}).get('value', ''), re.I)
         out.append({'iso': iso, 'gbifTitle': c.get('title'), 'labelEn': w.get('labelEn', {}).get('value'),

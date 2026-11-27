@@ -220,7 +220,7 @@ export class Globe {
     (this.map.getSource('square') as GeoJSONSource).setData(data);
   }
 
-  /** Species ranges as GBIF square-grid tiles: one entry each (all years, before 1990, since 2010, or species a/b).
+  /** Species ranges as GBIF square-grid tiles: one entry each (all years, before 2000, since 2000, or species a/b).
    *  GBIF cells are a fixed size within a tile, and zoomed out the globe shows lower-zoom tiles (lower still towards
    *  the poles), so the same cells would cover more and more ground. Below RANGE_NEAR the cells are half the size;
    *  the square grids nest, so the switch cuts no cell. */
@@ -230,8 +230,8 @@ export class Globe {
     const YEAR = new Date().getUTCFullYear();
     list.forEach((r, i) => {
       const filter: Record<string, string | number> = { taxonKey: r.key };
-      if (r.mode === 'then') filter.year = '1700,1989';
-      if (r.mode === 'now') filter.year = `2010,${YEAR}`;
+      if (r.mode === 'then') filter.year = '1758,1999';
+      if (r.mode === 'now') filter.year = `2000,${YEAR}`;
       const opacity = r.mode === 'then' || r.mode === 'b' ? 0.75 : 0.8;
       for (const [part, squareSize, zooms] of [['far', 32, { maxzoom: RANGE_NEAR }], ['near', 64, { minzoom: RANGE_NEAR }]] as const) {
         const id = `rng-${i}-${part}`;

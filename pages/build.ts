@@ -274,7 +274,7 @@ ${sp.wiki?.extract ? `<section><h2>About</h2><p class="extract">${esc(sp.wiki.ex
 ${rangeMap(sp.key, `World map of ${sp.name} records`)}
 <dl class="facts"><div><dt>Records</dt><dd>${fmt(sp.records)}</dd></div><div><dt>Countries</dt><dd>${fmt(nCountries)}</dd></div>${sp.years ? `<div><dt>Recorded</dt><dd>${sp.years[0]}–${sp.years[1]}</dd></div>` : ''}</dl>
 ${top.length ? `<h3>Most records come from</h3><ol class="countries">${top.map((t) => `<li>${t.p ? `<a href="/places/${t.p.slug}/">${esc(t.p.name)}</a>` : esc(regionName(t.iso))} <span>${fmt(t.n)}</span></li>`).join('')}</ol>` : ''}
-<p class="fine">Records are places where people found and reported the animal, from <a href="https://www.gbif.org/species/${sp.key}">GBIF</a>; some come from zoos, museums and tracking studies, and well-studied countries have far more. Squares on the map: brighter means more records.</p>
+<p class="fine">Records are places where people found and reported the animal, from <a href="https://www.gbif.org/species/${sp.key}">GBIF</a>; fossils and zoo animals are left out; museum specimens and tracking studies count, and well-studied countries have far more. Squares on the map: brighter means more records.</p>
 </section>
 ${kin.length ? `<section><h2>Related animals</h2><ul class="cards">${kin.map((o) => card(o)).join('')}</ul></section>` : ''}
 </article>`;
@@ -315,7 +315,7 @@ ${p.labelUz ? `<p class="uz" lang="uz">Oʻzbekcha: ${esc(p.labelUz)} hayvonlari<
 ${groups.length ? `<section><h2>Records by kind of animal</h2><ul class="bars">${groups.map((g) => `<li><span class="lb">${esc(LABEL[g.id])}</span><span class="br"><span class="g-${g.id}" style="width:${Math.max(0.5, (100 * g.records) / max).toFixed(1)}%"></span></span><span class="v">${fmt(g.records)}</span></li>`).join('')}</ul><p class="fine">Record counts show where people looked and what they looked for, not only what is common: birds are recorded far more than insects.</p></section>` : ''}
 ${threatened.length ? `<section><h2>Threatened animals recorded here</h2><p>${threatened.map((x) => `<a href="/animals/${x.sp.slug}/">${esc(x.sp.name)}</a> <span class="iucn iucn-${esc(x.sp.redlist)}">${esc(IUCN[x.sp.redlist!])}</span>`).join(' · ')}</p></section>` : ''}
 ${sections}
-<p class="fine">A species is listed when ${esc(p.name)} holds at least 1 % of its GBIF records, so a lion recorded in a zoo abroad does not count. For every animal ever recorded in a spot, open the globe and click it.</p>
+<p class="fine">A species is listed when ${esc(p.name)} has at least 10 sightings of it in the wild (and at least 0.1 % of all its sightings, or 50), so strays, escapes and zoo animals do not count; farm animals are left out. For every animal ever recorded in a spot, open the globe and click it.</p>
 </article>`;
   return layout({
     title: `Animals of ${p.name}: species, photos and maps | Fauna Atlas`, description, path: `/places/${p.slug}/`, ld, body,

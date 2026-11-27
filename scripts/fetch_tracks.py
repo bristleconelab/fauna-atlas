@@ -31,6 +31,7 @@ MAX_ROWS = 9900         # rows read per species at most (33 GBIF pages): past of
 MAX_TRACKS = 40         # animals written per species (the longest paths)
 MAX_POINTS = 400        # fixes per animal after thinning
 MIN_FIXES = 5
+MAX_ANIMALS_PER_BIG_STUDY = 12  # animals read one by one from a study too big to read whole
 MAX_GAP_DAYS = 20
 FIX_ERROR_KM = 5
 DAY = 86400.0
@@ -216,11 +217,12 @@ def tag_studies(f, key):
     return out
 
 
-def study_rows(f, key, dataset, total):
+def study_rows(f, key, dataset, total, animal=None):
     rows, offset = [], 0
+    extra = {'organismId': animal} if animal else {}
     while offset < total and offset < MAX_ROWS:
         page = f.gbif('occurrence/search', {**CLEAN, 'taxonKey': key, 'datasetKey': dataset, 'basisOfRecord': 'MACHINE_OBSERVATION',
-                                            'limit': 300, 'offset': offset}) or {}
+                                            'limit': 300, 'offset': offset, **extra}) or {}
         res = page.get('results', [])
         rows += [{'datasetKey': dataset, 'organismID': x.get('organismID'), 'eventDate': x.get('eventDate'),
                   'decimalLongitude': x.get('decimalLongitude'), 'decimalLatitude': x.get('decimalLatitude')} for x in res]
@@ -254,10 +256,26 @@ def main():
             cap = CAP.get(GROUP_BY_CLASS.get(sp.get('classKey'), 'default'), CAP['default'])
             rows, used = [], []
             for ds, n in studies:
-                if len(rows) + n > MAX_ROWS:
-                    continue  # whole studies only
-                rows += study_rows(f, key, ds, n)
-                used.append(ds)
+                room = MAX_ROWS - len(rows)
+                if n <= room:
+                    rows += study_rows(f, key, ds, n)  # the whole study
+                    used.append(ds)
+                    continue
+                # too big to read whole (GBIF slows past offset 10,000): its best-tracked animals, each one complete,
+                # rather than random fixes of every animal or nothing at all
+                fac = f.gbif('occurrence/search', {**CLEAN, 'taxonKey': key, 'datasetKey': ds, 'basisOfRecord': 'MACHINE_OBSERVATION',
+                                                   'limit': 0, 'facet': 'organismId', 'facetLimit': 60}) or {}
+                took = 0
+                for c in (fac.get('facets') or [{}])[0].get('counts', []):
+                    room = MAX_ROWS - len(rows)
+                    if room < 50 or took >= MAX_ANIMALS_PER_BIG_STUDY:
+                        break
+                    if c['count'] < MIN_FIXES or c['count'] > room:
+                        continue
+                    rows += study_rows(f, key, ds, c['count'], animal=c['name'])
+                    took += 1
+                if took:
+                    used.append(ds)
             every = build_tracks(rows, cap)
             land_mammal = sp.get('classKey') == 359 and sp.get('order') not in MARINE_MAMMALS and sp.get('family') not in MARINE_MAMMAL_FAMILIES
             if land_mammal:

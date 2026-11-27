@@ -121,7 +121,7 @@ nearBtn.addEventListener('click', () => {
     nearBtn.disabled = false; nearLbl.textContent = L('Near me', 'Yonimda');
     hint.hidden = false;
     hint.textContent = err.code === err.PERMISSION_DENIED
-      ? L('Location is switched off for this site. Allow it in the browser, or click the globe near you.', 'Bu sayt uchun joylashuv oʻchirilgan. Brauzerda ruxsat bering yoki yaqiningizdagi dengizni bosing.')
+      ? L('Location is switched off for this site. Allow it in the browser, or click the globe near you.', 'Bu sayt uchun joylashuv oʻchirilgan. Brauzerda ruxsat bering yoki globusda yaqiningizdagi joyni bosing.')
       : L('Your location did not come through. Click the globe near you instead.', 'Joylashuvingiz aniqlanmadi. Oʻrniga globusda yaqiningizdagi joyni bosing.');
   }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 });
 });

@@ -519,7 +519,6 @@ body.drawer-open #hint { display: none; }
   #map .maplibregl-ctrl-bottom-right { bottom: 34px; }
   body.panel-open .powered, body.drawer-open .powered { right: 472px; display: flex; }
   body.panel-open #map .maplibregl-ctrl-bottom-right, body.drawer-open #map .maplibregl-ctrl-bottom-right { right: 464px; bottom: 34px; }
-  body.panel-open .lang-switch, body.drawer-open .lang-switch { display: flex; }
 }
 /* narrow laptops with the panel open: the left column and the panel leave little globe; the credit steps aside */
 @media (min-width: 760px) and (max-width: 1099px) {

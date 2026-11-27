@@ -106,7 +106,7 @@ export class Panel {
     const nav = from ? h('button', { class: 'back', text: L(`Back to ${from.name}`, `${from.name} sahifasiga qaytish`), on: { click: () => this.showSpecies(from.id) } }) : null;
     const title = h('h2', { class: 'place-title', text: formatLatLon(lat, lon) });
     const kmNS = Math.round((box.north - box.south) * 111.3);
-    const kmEW = Math.round((box.east - box.west) * 111.3 * Math.cos((lat * Math.PI) / 180));
+    const kmEW = Math.round((box.east - box.west) * 111.3 * Math.cos((((box.south + box.north) / 2) * Math.PI) / 180)); // at the square's middle
     const sub = h('p', { class: 'place-sub', text: formatLatLon(lat, lon) });
     const area = L(`the outlined square, about ${kmEW} by ${kmNS} km`, `belgilangan taxminan ${kmEW} × ${kmNS} km kvadrat`);
     const summary = h('p', { class: 'summary', text: L('Finding animals recorded here…', 'Bu yerda qayd etilgan hayvonlar qidirilmoqda…') });
@@ -289,7 +289,10 @@ export class Panel {
       const table = h('ul', { class: 'known' });
       for (const { g, c } of rows) {
         const pct = Math.round(c.completeness * 100), cov = Math.round(c.coverage * 100);
-        const judged = c.coverage >= 0.9;
+        // invertebrates: records cluster on a few popular species (photo apps, one survey), which makes coverage look
+        // high while most species are never recorded (Serengeti insects: 902 recorded, "at least 1,479"; the true
+        // number is likely ten times that). Their count stands, but no estimate.
+        const judged = c.coverage >= 0.9 && !UNDERSAMPLED.has(g.id);
         table.append(h('li', {},
           h('span', { class: 'k-name', text: GROUP_LABEL[g.id] }),
           h('span', { class: 'meter', attrs: { role: 'img', 'aria-label': judged ? L(`${pct} % of the likely species recorded`, `ehtimoliy turlarning ${pct} % qayd etilgan`) : L('too few records to judge', 'baholash uchun yozuv kam') } },
@@ -297,7 +300,9 @@ export class Panel {
           h('span', { class: 'k-text', text: judged
             ? L(`${fmt(c.observed)} recorded of at least ${fmt(Math.round(c.estimate))} (${fmt(Math.round(c.lower))}–${fmt(Math.round(c.upper))})`,
               `${fmt(c.observed)} ta qayd etilgan, kamida ${fmt(Math.round(c.estimate))} ta (${fmt(Math.round(c.lower))}–${fmt(Math.round(c.upper))})`)
-            : L(`${fmt(c.observed)} recorded; too few records to judge (coverage ${cov} %)`, `${fmt(c.observed)} ta qayd etilgan; baholash uchun yozuv kam (qamrov ${cov} %)`) })));
+            : UNDERSAMPLED.has(g.id)
+              ? L(`${fmt(c.observed)} recorded; far more live here than anyone has recorded`, `${fmt(c.observed)} ta qayd etilgan; bu yerda qayd etilganidan ancha koʻp yashaydi`)
+              : L(`${fmt(c.observed)} recorded; too few records to judge (coverage ${cov} %)`, `${fmt(c.observed)} ta qayd etilgan; baholash uchun yozuv kam (qamrov ${cov} %)`) })));
       }
       box.append(table, h('p', { class: 'fine', text: L(
         'Per kind of animal: the species recorded and a Chao1 lower bound for how many live here (95 % interval), from how many species were recorded only once or twice. Below 90 % sample coverage the records are too patchy to judge. Records stand in for individuals, so read it as a guide to how well the ground is known, not a count.',
@@ -394,7 +399,7 @@ export class Panel {
           if (c) img.title = `${L('Photo', 'Surat')}: ${c.artist}, ${c.licence}, Wikimedia Commons`;
         });
       });
-      const missing = slice.map((s) => s.key).filter((k) => { const w = this.known.get(k); return !w?.sci || !w?.image; });
+      const missing = slice.map((s) => s.key).filter((k) => { const w = this.known.get(k); return !w?.sci || (!w?.image && !w?.photo); }); // own-index photos count: no needless GBIF lookups
       this.fillFromGbif(missing, t, apply, signal).then(() => {
         for (const li of tiles.values()) {
           const f = li.querySelector<HTMLElement>('.tile-photo')!;
@@ -623,13 +628,13 @@ export class Panel {
       if (!on) { this.host.showRanges([{ key: id, mode: 'all' }]); out.replaceChildren(); return; }
       this.host.showRanges([{ key: id, mode: 'then' }, { key: id, mode: 'now' }]);
       out.replaceChildren(
-        h('ul', { class: 'legend-dots' }, h('li', {}, h('span', { class: 'dot', attrs: { style: 'background:#b39ddb' } }), L('before 1990', '1990 gacha')),
-          h('li', {}, h('span', { class: 'dot', attrs: { style: 'background:#f2c94c' } }), L('since 2010', '2010 dan keyin'))),
+        h('ul', { class: 'legend-dots' }, h('li', {}, h('span', { class: 'dot', attrs: { style: 'background:#b39ddb' } }), L('before 2000', '2000 gacha')),
+          h('li', {}, h('span', { class: 'dot', attrs: { style: 'background:#f2c94c' } }), L('since 2000', '2000 dan keyin'))),
         h('p', { class: 'fine', text: L('Loading the counts…', 'Sanoqlar yuklanmoqda…') }));
-      const [a, b] = await Promise.all([api.gbifCount({ taxonKey: id, year: '1700,1989' }, signal).catch(() => 0), api.gbifCount({ taxonKey: id, year: '2010,2100' }, signal).catch(() => 0)]);
+      const [a, b] = await Promise.all([api.gbifCount({ taxonKey: id, year: '1758,1999' }, signal).catch(() => 0), api.gbifCount({ taxonKey: id, year: `2000,${new Date().getUTCFullYear()}` }, signal).catch(() => 0)]);
       if (t !== this.token || !on) return;
-      out.lastElementChild!.replaceWith(h('p', { text: L(`${fmt(a)} records before 1990, ${fmt(b)} since 2010.`, `1990 gacha ${fmt(a)} ta, 2010 dan keyin ${fmt(b)} ta yozuv.`) }),
-        h('p', { class: 'fine', text: L('Where people looked changed even more than where animals live: phone apps such as iNaturalist and eBird made records since 2010 far more common and far more urban. A place that appears only recently was usually first looked at recently.', 'Odamlar qayerga qaragani hayvonlar yashash joyidan ham koʻproq oʻzgargan: iNaturalist va eBird kabi ilovalar 2010 dan keyingi yozuvlarni ancha koʻpaytirdi va shaharlarga yaqinlashtirdi. Faqat yaqinda paydo boʻlgan joyga odatda yaqinda birinchi marta qaralgan.') }));
+      out.lastElementChild!.replaceWith(h('p', { text: L(`${fmt(a)} records before 2000, ${fmt(b)} since 2000.`, `2000 gacha ${fmt(a)} ta, 2000 dan keyin ${fmt(b)} ta yozuv.`) }),
+        h('p', { class: 'fine', text: L('Where people looked changed even more than where animals live: phone apps such as iNaturalist and eBird made records since 2000, and above all since 2010, far more common and far more urban. A place that appears only recently was usually first looked at recently.', 'Odamlar qayerga qaragani hayvonlar yashash joyidan ham koʻproq oʻzgargan: iNaturalist va eBird kabi ilovalar 2010 dan keyingi yozuvlarni ancha koʻpaytirdi va shaharlarga yaqinlashtirdi. Faqat yaqinda paydo boʻlgan joyga odatda yaqinda birinchi marta qaralgan.') }));
     });
   }
 
@@ -712,3 +717,6 @@ export class Panel {
 }
 
 export { THREATENED };
+
+/** Kinds of animal recorded too patchily for a richness estimate (see surveyBox). */
+const UNDERSAMPLED = new Set<GroupId>(['insects', 'spiders', 'crustaceans', 'molluscs', 'worms', 'corals', 'echinoderms']);
