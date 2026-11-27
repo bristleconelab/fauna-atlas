@@ -475,3 +475,62 @@ body.drawer-open .lang-switch, body.drawer-open .powered { right: 472px; }
   #migrations.drawer, #about.drawer { width: auto; max-width: none; height: 70vh; }
 }
 body.drawer-open #hint { display: none; }
+
+/* =====================================================================================================
+   Layout v2 (2026-11-27): one column on the left (logo, search, the ways to explore, the legend at the
+   foot), the globe free in the middle, the panel and drawers on the right, the credit small in the
+   bottom-right corner. The brand orange marks the one thing that is on.
+   ===================================================================================================== */
+:root { --accent: #f26430; --glass: rgb(12 24 17 / 0.74); --rail: 260px; }
+
+/* search: short, with a magnifier and the "/" shortcut, not a long pill */
+.topbar { width: var(--rail); gap: 12px; }
+.search { position: relative; }
+.search-ico { position: absolute; left: 12px; top: 50%; width: 18px; height: 18px; transform: translateY(-50%); fill: none; stroke: #5b6e60; stroke-width: 2; stroke-linecap: round; pointer-events: none; z-index: 1; }
+#search { height: 42px; padding: 0 34px 0 38px; border-radius: 12px; font-size: 15px; box-shadow: 0 6px 22px rgb(0 0 0 / 0.35); }
+#search:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.search-key { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); min-width: 20px; padding: 1px 6px; border-radius: 5px; border: 1px solid #c9d6cc; color: #5b6e60; font: 12px/1.4 var(--sans); text-align: center; pointer-events: none; }
+.search:focus-within .search-key, #search:not(:placeholder-shown) ~ .search-key { display: none; }
+#hits { top: 48px; width: min(400px, calc(100vw - 32px)); right: auto; }
+
+/* the ways to explore: a vertical list under the search, icons with plain names */
+.nav-btn {
+  display: flex; align-items: center; gap: 10px; width: 100%; height: 40px; padding: 0 12px; border: 0; border-radius: 10px;
+  background: none; color: var(--foam); font: 560 15px/1 var(--sans); text-align: left; white-space: nowrap; position: relative;
+}
+.nav-btn .ico { flex: none; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; }
+.nav-btn:hover { background: rgb(255 255 255 / 0.07); }
+.nav-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.nav-btn[aria-pressed='true'] { background: rgb(242 100 48 / 0.16); color: #ffe1d4; }
+.nav-btn[aria-pressed='true']::before { content: ''; position: absolute; left: 0; top: 9px; bottom: 9px; width: 3px; border-radius: 2px; background: var(--accent); }
+.nav-btn:disabled { opacity: 0.6; cursor: progress; }
+#looked[aria-pressed='true'] { background: rgb(242 100 48 / 0.16); }
+
+@media (min-width: 760px) {
+  .corner { top: 132px; bottom: 16px; left: 16px; width: var(--rail); justify-content: space-between; pointer-events: none; }
+  .corner > * { pointer-events: auto; }
+  .corner-buttons { order: -1; flex-direction: column; gap: 2px; padding: 6px; border-radius: 14px; background: var(--glass); backdrop-filter: blur(8px); width: 100%; }
+  #legend { width: 100%; margin-top: auto; }
+  #hint { bottom: 24px; }
+  .tour { left: calc(16px + var(--rail) + 12px); top: 132px; }
+  /* the credit: small, bottom-right; the map's own controls sit just above it */
+  .powered { top: auto; bottom: 14px; right: 16px; padding: 3px 9px 3px 3px; font-size: 11px; background: rgb(12 24 17 / 0.6); }
+  /* #map: MapLibre's own stylesheet loads after this one and would win at equal specificity */
+  #map .maplibregl-ctrl-bottom-right { bottom: 34px; }
+  body.panel-open .powered, body.drawer-open .powered { right: 472px; display: flex; }
+  body.panel-open #map .maplibregl-ctrl-bottom-right, body.drawer-open #map .maplibregl-ctrl-bottom-right { right: 464px; bottom: 34px; }
+  body.panel-open .lang-switch, body.drawer-open .lang-switch { display: flex; }
+}
+/* narrow laptops with the panel open: the left column and the panel leave little globe; the credit steps aside */
+@media (min-width: 760px) and (max-width: 1099px) {
+  body.panel-open .powered, body.drawer-open .powered { display: none; }
+}
+
+/* phones: the ways to explore stay one row at the bottom, as pills */
+@media (max-width: 759px) {
+  .topbar { width: calc(100vw - 120px); }
+  .corner-buttons { flex-direction: row; gap: 6px; }
+  .nav-btn { width: auto; height: 36px; padding: 0 12px; border-radius: 18px; background: rgb(12 24 17 / 0.82); font-size: 14px; flex: none; }
+  .nav-btn .ico { width: 16px; height: 16px; }
+  .search-key { display: none; }
+}

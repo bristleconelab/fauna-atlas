@@ -104,18 +104,19 @@ initSearch($('#search'), $('#hits'), $('#search-status'),
 
 // Near me: the reader's own surroundings. The position stays in the browser; only the square's outline goes to GBIF.
 const nearBtn = $<HTMLButtonElement>('#near-me');
+const nearLbl = nearBtn.querySelector<HTMLElement>('.lbl')!; // the icon stays; only the label changes
 if (!('geolocation' in navigator)) nearBtn.hidden = true;
 nearBtn.addEventListener('click', () => {
   nearBtn.disabled = true;
-  nearBtn.textContent = L('Finding you…', 'Joylashuv aniqlanmoqda…');
+  nearLbl.textContent = L('Finding you…', 'Joylashuv aniqlanmoqda…');
   navigator.geolocation.getCurrentPosition((pos) => {
-    nearBtn.disabled = false; nearBtn.textContent = L('Near me', 'Yonimda');
+    nearBtn.disabled = false; nearLbl.textContent = L('Near me', 'Yonimda');
     const { latitude: lat, longitude: lon } = pos.coords;
     hint.hidden = true;
     globe.flyTo(lon, lat, 4);
     panel.showPlace(lat, lon);
   }, (err) => {
-    nearBtn.disabled = false; nearBtn.textContent = L('Near me', 'Yonimda');
+    nearBtn.disabled = false; nearLbl.textContent = L('Near me', 'Yonimda');
     hint.hidden = false;
     hint.textContent = err.code === err.PERMISSION_DENIED
       ? L('Location is switched off for this site. Allow it in the browser, or click the globe near you.', 'Bu sayt uchun joylashuv oʻchirilgan. Brauzerda ruxsat bering yoki yaqiningizdagi dengizni bosing.')

@@ -83,10 +83,12 @@
     <h1 class="brand"><img src="/brand/fauna-atlas-logo-dark.svg" alt="Fauna Atlas" width="126" height="35"></h1>
     <div class="search" role="search">
       <label for="search" class="visually-hidden" data-uz="Hayvon yoki joy qidirish">Find an animal or a place</label>
-      <input id="search" type="search" autocomplete="off" spellcheck="false" placeholder="Search an animal or a place"
-        data-placeholder="Search an animal or a place" data-uz-placeholder="Hayvon yoki joy qidirish"
+      <svg class="search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+      <input id="search" type="search" autocomplete="off" spellcheck="false" placeholder="Animal or place"
+        data-placeholder="Animal or place" data-uz-placeholder="Hayvon yoki joy"
         role="combobox" aria-expanded="false" aria-controls="hits" aria-autocomplete="list">
       <ul id="hits" role="listbox" hidden></ul>
+      <kbd class="search-key" aria-hidden="true">/</kbd>
       <p id="search-status" class="visually-hidden" aria-live="polite"></p>
     </div>
   </header>
@@ -95,7 +97,7 @@
     <button data-lang="en" lang="en">EN</button><button data-lang="uz" lang="uz">UZ</button>
   </div>
 
-  <a class="powered" href="https://github.com/bristleconelab" target="_blank" rel="noopener"><img src="/brand/bristleconelab-mark-light-128.png" alt="" width="24" height="24"><span><span class="pw">powered </span>by <b>bristlecone lab</b></span></a>
+  <a class="powered" href="https://github.com/bristleconelab" target="_blank" rel="noopener"><img src="/brand/bristleconelab-mark-light-128.png" alt="" width="24" height="24"><span>by <b>bristlecone lab</b></span></a>
 
   <p id="hint" data-uz="Qaysi hayvonlar yashashini koʻrish uchun istalgan joyni bosing">Click anywhere to see which animals live there</p>
 
@@ -118,13 +120,13 @@
       </ul>
       <p id="legend-note" class="fine" data-uz="Yuklanmoqda…">Loading…</p>
     </div>
-    <div class="corner-buttons">
-      <button id="looked" class="btn" aria-pressed="false" data-uz="Odamlar qayerni oʻrgangan">Where people have looked</button>
-      <button id="tour-open" class="btn ghost" data-uz="Sayohat">Tour</button>
-      <button id="near-me" class="btn ghost" data-uz="Yonimda">Near me</button>
-      <button id="migrations-open" class="btn ghost" data-uz="Dengiz migratsiyalari">Sea migrations</button>
-      <button id="about-open" class="btn ghost" data-uz="Haqida">About</button>
-    </div>
+    <nav class="corner-buttons" aria-label="Explore" data-uz-label="Koʻrish">
+      <button id="looked" class="nav-btn" aria-pressed="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span class="lbl" data-uz="Odamlar qayerni oʻrgangan">Where people have looked</span></button>
+      <button id="tour-open" class="nav-btn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg><span class="lbl" data-uz="Sayohat">Tour</span></button>
+      <button id="near-me" class="nav-btn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg><span class="lbl" data-uz="Yonimda">Near me</span></button>
+      <button id="migrations-open" class="nav-btn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9c2.5-2 4.5-2 7 0s4.5 2 7 0 3-1.5 4-1.5"/><path d="M3 15c2.5-2 4.5-2 7 0s4.5 2 7 0 3-1.5 4-1.5"/></svg><span class="lbl" data-uz="Dengiz migratsiyalari">Sea migrations</span></button>
+      <button id="about-open" class="nav-btn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.01"/></svg><span class="lbl" data-uz="Haqida">About</span></button>
+    </nav>
   </div>
 
   <aside id="panel" hidden aria-live="polite">
