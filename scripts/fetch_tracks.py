@@ -34,6 +34,11 @@ MAX_GAP_DAYS = 20
 FIX_ERROR_KM = 5
 DAY = 86400.0
 # fastest believable travel, km per day (as in Ocean Life Atlas): faster is a location error
+# average km per day over a whole track, at most, for land mammals: a fox or a boar does not cover 48 km every day
+# for seven years; that is many animals, or many places, under one ID. Whales, seals and sea cows are not held to it.
+LAND_MAMMAL_MEAN_KM_PER_DAY = 25
+MARINE_MAMMALS = {'Cetacea', 'Sirenia'}
+MARINE_MAMMAL_FAMILIES = {'Phocidae', 'Otariidae', 'Odobenidae'}
 CAP = {'birds': 1200, 'fish': 300, 'sharks': 300, 'mammals': 300, 'reptiles': 200, 'insects': 400, 'default': 400}
 GROUP_BY_CLASS = {212: 'birds', 359: 'mammals', 121: 'sharks', 120: 'sharks', 216: 'insects',
                   11592253: 'reptiles', 11418114: 'reptiles', 11493978: 'reptiles'}
@@ -201,8 +206,11 @@ def tag_studies(f, key):
         probe = f.gbif('occurrence/search', {**CLEAN, 'taxonKey': key, 'datasetKey': c['name'], 'basisOfRecord': 'MACHINE_OBSERVATION', 'limit': 50}) or {}
         rows = probe.get('results', [])
         named = [x.get('organismID') for x in rows if x.get('organismID')]
-        # a tag study: nearly every row names an animal, and each animal sends several fixes
-        if rows and len(named) >= 0.8 * len(rows) and len(set(named)) <= len(rows) / 3:
+        # a tag study: nearly every row names an animal, and each animal sends several fixes. Monitoring schemes that
+        # put a count or a site number in organismID ("1": Japan's Monitoring Sites 1000 camera traps) are not one:
+        # their "animal 1" jumps between cameras across the country.
+        counts_only = all(str(x).isdigit() and int(x) <= 20 for x in named)
+        if rows and len(named) >= 0.8 * len(rows) and len(set(named)) <= len(rows) / 3 and not counts_only:
             out.append((c['name'], c['count']))
     return out
 
@@ -249,11 +257,16 @@ def main():
                     continue  # whole studies only
                 rows += study_rows(f, key, ds, n)
                 used.append(ds)
-            tracks = build_tracks(rows, cap)[:MAX_TRACKS]
+            every = build_tracks(rows, cap)
+            land_mammal = sp.get('classKey') == 359 and sp.get('order') not in MARINE_MAMMALS and sp.get('family') not in MARINE_MAMMAL_FAMILIES
+            if land_mammal:
+                every = [t for t in every if t['km'] / max(1, (t['end'] - t['start']) / DAY) <= LAND_MAMMAL_MEAN_KM_PER_DAY]
+            every = [t for t in every if t['km'] >= 1]  # tags that never left their spot draw nothing
+            tracks = every[:MAX_TRACKS]
             if tracks:
                 metas = {d: dataset_meta(f, d) for d in {t['dataset'] for t in tracks}}
                 ds_list = list(metas)
-                out = {'key': key, 'cap': cap, 'studies': [metas[d] for d in ds_list], 'animals': len(build_tracks(rows, cap)),
+                out = {'key': key, 'cap': cap, 'studies': [metas[d] for d in ds_list], 'animals': len(every),
                        'tracks': [{'s': ds_list.index(t['dataset']), 'a': t['animal'], 'km': t['km'], 'd': t['dropped'],
                                    't0': int(t['start']), 't1': int(t['end']),
                                    # [lon, lat, hours since the first fix], 3 decimals ~ 100 m

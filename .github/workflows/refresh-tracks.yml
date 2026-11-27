@@ -1,0 +1,76 @@
+name: Refresh tag tracks (monthly)
+
+# Rebuilds the real journeys of tagged animals (scripts/fetch_tracks.py: GPS and satellite-tag studies published to
+# GBIF) for the species with pages, refuses a result with far fewer species than the committed one, commits
+# public/data/tracks and starts the deploy. Its own workflow, a week after the page data (refresh-pages.yml): both
+# together would not fit one runner's time limit. GBIF limits the request rate: a run takes a few hours.
+
+on:
+  schedule:
+    - cron: "41 3 11 * *" # 11th of each month, 03:41 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write # commit the refreshed tracks
+  actions: write # start deploy.yml: pushes made with GITHUB_TOKEN do not trigger other workflows
+
+concurrency:
+  group: refresh-tracks
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - id: month
+        run: echo "m=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+      # answers are cached per month, so a re-run after a failure resumes instead of starting over
+      - uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/http-cache
+          key: tracks-http-${{ steps.month.outputs.m }}-${{ github.run_id }}
+          restore-keys: tracks-http-${{ steps.month.outputs.m }}-
+      - name: Build the tracks
+        run: python -I -u scripts/fetch_tracks.py --data data/pages/species.json --out "$RUNNER_TEMP/tracks" --cache "$RUNNER_TEMP/http-cache"
+      - name: Check the new tracks against the committed ones
+        run: |
+          python -I - "$RUNNER_TEMP/tracks" <<'PY'
+          import json, sys
+          import os
+          path = "public/data/tracks/index.json"
+          old = len(json.load(open(path))) if os.path.exists(path) else 0
+          new = len(json.load(open(f"{sys.argv[1]}/index.json")))
+          print(f"species with tracks: {old} -> {new}")
+          if new < 0.8 * old:
+              sys.exit(f"::error::species with tracks fell from {old} to {new}; keeping the old tracks")
+          PY
+          rm -rf public/data/tracks
+          cp -r "$RUNNER_TEMP/tracks" public/data/tracks
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Commit and push
+        id: commit
+        run: |
+          git config user.name ismoilovdevml
+          git config user.email 107093598+ismoilovdevml@users.noreply.github.com
+          git add -A public/data/tracks
+          if git diff --cached --quiet; then echo "no change"; exit 0; fi
+          git commit -m "Refresh tag tracks ($(date -u +%F))"
+          git pull --rebase origin main
+          git push origin HEAD:main
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+      - name: Deploy the site
+        if: steps.commit.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy.yml --ref main

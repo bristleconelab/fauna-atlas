@@ -14,6 +14,9 @@ usage: python3 -I scripts/fetch_pages_data.py --out data/pages --cache /tmp/faun
 """
 import argparse
 import hashlib
+import signal
+import threading
+import http.client
 import html
 import json
 import os
@@ -52,6 +55,30 @@ def subtract_domestic(f, key, countries):
     return sorted(countries, key=lambda x: -x[1])
 
 
+DEADLINE_S = 180
+
+
+class deadline:
+    """Raise TimeoutError if the block runs longer than `seconds` (SIGALRM: main thread, Unix; elsewhere a no-op)."""
+    def __init__(self, seconds):
+        self.seconds = seconds
+        self.on = hasattr(signal, 'SIGALRM') and threading.current_thread() is threading.main_thread()
+
+    def __enter__(self):
+        if self.on:
+            def fire(*_):
+                raise TimeoutError(f'no complete answer in {self.seconds} s')
+            self.old = signal.signal(signal.SIGALRM, fire)
+            signal.alarm(self.seconds)
+        return self
+
+    def __exit__(self, *exc):
+        if self.on:
+            signal.alarm(0)
+            signal.signal(signal.SIGALRM, self.old)
+        return False
+
+
 class Fetcher:
     def __init__(self, cache):
         self.cache = cache
@@ -72,7 +99,9 @@ class Fetcher:
             self.last[host] = time.time()
             req = urllib.request.Request(url, data=data.encode() if data else None, headers={'User-Agent': UA, **(headers or {})})
             try:
-                with urllib.request.urlopen(req, timeout=90) as r:
+                # a deadline for the whole answer: the socket timeout covers one read, and GBIF sometimes trickles a
+                # chunked page so slowly that each read arrives in time and the page never ends (seen 2026-11-27)
+                with deadline(DEADLINE_S), urllib.request.urlopen(req, timeout=90) as r:
                     body = json.load(r)
                 break
             except urllib.error.HTTPError as e:
@@ -84,7 +113,8 @@ class Fetcher:
                     time.sleep(float(ra) + 1 if ra and ra.isdigit() else min(60, 5 * (attempt + 1)))
                     continue
                 raise
-            except (urllib.error.URLError, TimeoutError, ConnectionError):
+            # a connection dropped mid-answer (IncompleteRead) or a cut-off JSON body: try again like any network error
+            except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException, json.JSONDecodeError):
                 time.sleep(min(60, 5 * (attempt + 1)))
         else:
             raise RuntimeError('gave up on ' + url)
