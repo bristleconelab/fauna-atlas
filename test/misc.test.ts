@@ -94,7 +94,7 @@ describe('commons thumbnails', () => {
   });
 });
 
-import { capWeight, fadeRows } from '../src/polecap';
+import { capWeight, fadePolarOverlays, fadeRows, gbifTileZY } from '../src/polecap';
 describe('capWeight', () => {
   it('is full cap colour on the pole-side row and fades to the imagery over the fade rows', () => {
     expect(capWeight(0, 256, 'top')).toBe(1);
@@ -106,5 +106,16 @@ describe('capWeight', () => {
   it('keeps the fade about the same width in latitude at every zoom', () => {
     expect([0, 1, 2, 3, 4, 5].map((z) => fadeRows(z))).toEqual([12, 24, 48, 96, 192, 256]);
     expect(fadeRows(1, 512)).toBe(48);
+  });
+});
+
+describe('polar overlay fade', () => {
+  it('sends only the top and bottom rows of GBIF density tiles through the fade', () => {
+    const u = (z: number, x: number, y: number) => `https://api.gbif.org/v2/map/occurrence/density/${z}/${x}/${y}@1x.png?srs=EPSG:3857&taxonKey=1`;
+    expect(gbifTileZY(u(3, 5, 7))).toEqual({ z: 3, y: 7 });
+    expect(fadePolarOverlays(u(3, 5, 0), 'Tile')?.url.startsWith('polefade://')).toBe(true);
+    expect(fadePolarOverlays(u(3, 5, 7), 'Tile')?.url.startsWith('polefade://')).toBe(true);
+    expect(fadePolarOverlays(u(3, 5, 4), 'Tile')).toBeUndefined();
+    expect(fadePolarOverlays('https://tiles.openfreemap.org/x', 'Tile')).toBeUndefined();
   });
 });

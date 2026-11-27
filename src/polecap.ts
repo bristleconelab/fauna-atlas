@@ -20,6 +20,20 @@ export function capWeight(row: number, size: number, edge: 'top' | 'bottom', fad
 /** Tile URL template routed through the protocol ({z}/{y}/{x} stay for MapLibre to fill in). */
 export const capped = (template: string) => PREFIX + template;
 
+const FADE_PREFIX = 'polefade://';
+/** z and y of a GBIF density tile URL (.../density/{z}/{x}/{y}@1x.png?...). */
+export function gbifTileZY(url: string): { z: number; y: number } | null {
+  const m = /\/density\/(\d+)\/(\d+)\/(\d+)@/.exec(url);
+  return m ? { z: Number(m[1]), y: Number(m[3]) } : null;
+}
+/** MapLibre transformRequest: GBIF density tiles on the top or bottom row (the ones the globe stretches to the pole,
+ *  which drew radial streaks there) go through the polefade protocol; every other tile loads as it is. */
+export function fadePolarOverlays(url: string, kind?: string): { url: string } | undefined {
+  if (kind !== 'Tile' || !url.startsWith('https://api.gbif.org/v2/map/')) return undefined;
+  const t = gbifTileZY(url);
+  return t && (t.y === 0 || t.y === 2 ** t.z - 1) ? { url: FADE_PREFIX + url } : undefined;
+}
+
 export function registerPoleCaps() {
   maplibregl.addProtocol('polecap', async (params, abort) => {
     const url = params.url.slice(PREFIX.length);
@@ -31,19 +45,53 @@ export function registerPoleCaps() {
     // no OffscreenCanvas (Safari before 16.4): the tile as it is, a pinwheel at the pole rather than a hole
     if (!edge || typeof OffscreenCanvas === 'undefined') return { data: await res.arrayBuffer() };
     const bmp = await createImageBitmap(await res.blob());
-    const c = new OffscreenCanvas(bmp.width, bmp.height);
+    // read the size before close(): a closed ImageBitmap reports 0 x 0 (that blanked the polar tiles, 2026-11-27)
+    const W = bmp.width, H = bmp.height;
+    const c = new OffscreenCanvas(W, H);
     const g = c.getContext('2d')!;
     g.drawImage(bmp, 0, 0);
     bmp.close();
-    const fade = fadeRows(z, bmp.height);
-    const rows = edge === 'top' ? [0, fade] : [bmp.height - fade, bmp.height];
-    const img = g.getImageData(0, rows[0], bmp.width, rows[1] - rows[0]);
+    const fade = fadeRows(z, H);
+    const rows = edge === 'top' ? [0, fade] : [H - fade, H];
+    const img = g.getImageData(0, rows[0], W, rows[1] - rows[0]);
     const cap = edge === 'top' ? CAP.north : CAP.south;
     for (let r = 0; r < rows[1] - rows[0]; r++) {
-      const w = capWeight(rows[0] + r, bmp.height, edge, fade);
-      for (let i = r * bmp.width * 4, e = i + bmp.width * 4; i < e; i += 4) {
+      const w = capWeight(rows[0] + r, H, edge, fade);
+      for (let i = r * W * 4, e = i + W * 4; i < e; i += 4) {
         for (let k = 0; k < 3; k++) img.data[i + k] = Math.round(img.data[i + k] * (1 - w) + cap[k] * w);
       }
+    }
+    g.putImageData(img, 0, rows[0]);
+    return { data: await (await c.convertToBlob({ type: 'image/png' })).arrayBuffer() };
+  });
+
+  // GBIF overlays: the polar rows fade to transparent, so nothing is stretched to the pole
+  maplibregl.addProtocol('polefade', async (params, abort) => {
+    const url = params.url.slice(FADE_PREFIX.length);
+    const res = await fetch(url, { signal: abort.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
+    const t = gbifTileZY(url)!;
+    const blob = await res.blob();
+    if (typeof OffscreenCanvas === 'undefined') return { data: await blob.arrayBuffer() };
+    // 204 (no records in this tile): an empty transparent tile
+    if (!blob.size) {
+      const empty = new OffscreenCanvas(1, 1);
+      empty.getContext('2d'); // convertToBlob needs a context, even on a blank canvas
+      return { data: await (await empty.convertToBlob({ type: 'image/png' })).arrayBuffer() };
+    }
+    const bmp = await createImageBitmap(blob);
+    const W = bmp.width, H = bmp.height;
+    const c = new OffscreenCanvas(W, H);
+    const g = c.getContext('2d')!;
+    g.drawImage(bmp, 0, 0);
+    bmp.close();
+    const edge = t.y === 0 ? 'top' : 'bottom';
+    const fade = fadeRows(t.z, H);
+    const rows = edge === 'top' ? [0, fade] : [H - fade, H];
+    const img = g.getImageData(0, rows[0], W, rows[1] - rows[0]);
+    for (let r = 0; r < rows[1] - rows[0]; r++) {
+      const keep = 1 - capWeight(rows[0] + r, H, edge, fade);
+      for (let i = r * W * 4 + 3, e = (r + 1) * W * 4; i < e; i += 4) img.data[i] = Math.round(img.data[i] * keep);
     }
     g.putImageData(img, 0, rows[0]);
     return { data: await (await c.convertToBlob({ type: 'image/png' })).arrayBuffer() };

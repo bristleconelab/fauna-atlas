@@ -6,7 +6,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { bboxRing, frameOf, type BBox } from './geo';
 import { gbifTiles } from './api';
-import { capped, registerPoleCaps } from './polecap';
+import { capped, fadePolarOverlays, registerPoleCaps } from './polecap';
 import { h, fmt, plural } from './dom';
 import { L } from './i18n';
 
@@ -171,6 +171,7 @@ export class Globe {
     this.map = new maplibregl.Map({
       container, style: style(lang), center: [60, 8], zoom: 2.1, minZoom: 0.8, maxZoom: 12,
       attributionControl: { compact: true }, renderWorldCopies: false,
+      transformRequest: (url, kind) => fadePolarOverlays(url, kind),
     });
     this.map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
     this.ready = new Promise((res) => this.map.once('load', () => res()));
