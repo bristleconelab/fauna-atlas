@@ -1,4 +1,4 @@
-/* Static species and country pages: the globe panel's field-guide look (forest, ochre, light paper), no JavaScript. */
+/* Static species and country pages: the globe's look (night sky, the left column, the paper panel), no JavaScript. */
 @font-face { font-family: 'Bricolage Grotesque'; src: url(bricolage.woff2) format('woff2'); font-weight: 200 800; font-display: swap; }
 @font-face { font-family: 'Source Serif 4'; src: url(serif-italic.woff2) format('woff2'); font-style: italic; font-weight: 200 900; font-display: swap; }
 @font-face { font-family: 'Source Serif 4'; src: url(serif.woff2) format('woff2'); font-style: normal; font-weight: 200 900; font-display: swap; }
@@ -100,3 +100,55 @@ footer .powered:hover b { text-decoration: underline; }
 
 /* jump links (#mammals) land below the sticky bar, not under it */
 section[id] { scroll-margin-top: 76px; }
+
+/* =====================================================================================================
+   Layout v2 (2026-11-27): the globe's night sky, its left column (logo, ways in, credit), the content on a
+   paper sheet like the globe's panel. The brand orange marks where you are.
+   ===================================================================================================== */
+:root { --accent: #f26430; --rail: 240px; --night: #070d0a; }
+body {
+  background-color: var(--night);
+  background-image:
+    radial-gradient(1px 1px at 20px 30px, rgb(255 255 255 / 0.55), transparent),
+    radial-gradient(1px 1px at 140px 90px, rgb(255 255 255 / 0.35), transparent),
+    radial-gradient(1.5px 1.5px at 260px 160px, rgb(255 240 210 / 0.5), transparent),
+    radial-gradient(1px 1px at 330px 40px, rgb(210 230 255 / 0.4), transparent),
+    radial-gradient(1px 1px at 90px 210px, rgb(255 255 255 / 0.3), transparent),
+    radial-gradient(ellipse 80% 50% at 50% 110%, rgb(70 160 120 / 0.18), transparent 70%),
+    radial-gradient(circle at 40% 30%, #10211a, var(--night) 70%);
+  background-size: 380px 260px, 380px 260px, 380px 260px, 380px 260px, 380px 260px, 100% 100%, 100% 100%;
+  background-attachment: fixed;
+}
+.shell { display: grid; grid-template-columns: var(--rail) minmax(0, 1fr); gap: 20px; max-width: 1360px; margin: 0 auto; padding: 16px; min-height: 100vh; }
+.rail { position: sticky; top: 16px; align-self: start; height: calc(100vh - 32px); display: flex; flex-direction: column; gap: 16px; }
+.rail .brand img { display: block; height: 35px; width: auto; }
+.rail-nav { display: flex; flex-direction: column; gap: 2px; padding: 6px; border-radius: 14px; background: rgb(12 24 17 / 0.74); }
+.rail-nav a { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 12px; border-radius: 10px; color: var(--paper); text-decoration: none; font-weight: 560; font-size: 15px; position: relative; }
+.rail-nav a:hover { background: rgb(255 255 255 / 0.07); }
+.rail-nav svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; }
+.rail-nav a[aria-current='page'] { background: rgb(242 100 48 / 0.16); color: #ffe1d4; }
+.rail-nav a[aria-current='page']::before { content: ''; position: absolute; left: 0; top: 9px; bottom: 9px; width: 3px; border-radius: 2px; background: var(--accent); }
+.rail .powered { margin-top: auto; display: flex; align-items: center; gap: 8px; width: fit-content; padding: 3px 10px 3px 3px; border-radius: 15px; background: rgb(12 24 17 / 0.62); color: #dfe8e1; text-decoration: none; font-size: 11.5px; }
+.rail .powered img { border-radius: 4px; display: block; }
+.sheet { background: var(--paper); border-radius: 18px; box-shadow: 0 16px 48px rgb(0 0 0 / 0.45); overflow: hidden; min-width: 0; }
+main { max-width: 900px; margin: 0; padding: 22px clamp(18px, 3.5vw, 44px) 36px; }
+footer { margin-top: 12px; padding: 18px clamp(18px, 3.5vw, 44px) 26px; }
+footer p { max-width: 900px; margin: 0; }
+:focus-visible { outline-color: var(--accent); }
+/* species page: a smaller photo beside the name, not a wide banner */
+.hero { grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 28px; }
+.photo img { aspect-ratio: 4 / 3; }
+h1 { font-size: clamp(30px, 4vw, 44px); }
+.btn { background: var(--forest); }
+.btn:hover { background: #1f3a2a; }
+@media (max-width: 860px) {
+  .shell { grid-template-columns: 1fr; gap: 12px; padding: 10px; }
+  .rail { position: static; height: auto; flex-direction: row; align-items: center; flex-wrap: wrap; gap: 10px; }
+  .rail .brand img { height: 30px; }
+  .rail-nav { flex-direction: row; padding: 4px; }
+  .rail-nav { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .rail-nav a { height: 36px; padding: 0 10px; font-size: 14px; white-space: nowrap; flex: none; }
+  .photo img { max-height: 260px; }
+  .rail .powered { display: none; }
+  .hero { grid-template-columns: 1fr; }
+}

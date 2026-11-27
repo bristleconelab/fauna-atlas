@@ -158,6 +158,14 @@ let OWN_PHOTOS = new Set<number>();
 const img = (p: [string, string], attrs: string) =>
   `<img src="${esc(p[0])}"${p[1] !== p[0] ? ` onerror="if(this.src!=='${esc(p[1])}')this.src='${esc(p[1])}'"` : ''} ${attrs}>`;
 
+const ICON = {
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z"/>',
+  paw: '<circle cx="7" cy="9" r="1.8"/><circle cx="11" cy="6" r="1.8"/><circle cx="15" cy="6.5" r="1.8"/><circle cx="18" cy="10" r="1.8"/><path d="M8 17c0-3 2-5.5 4.5-5.5S17 14 17 17c0 2-2 2.5-4.5 1.6C10 19.5 8 19 8 17z"/>',
+  flag: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
+};
+const navLink = (href: string, label: string, icon: string, here: boolean) =>
+  `<a href="${href}"${here ? ' aria-current="page"' : ''}><svg viewBox="0 0 24 24" aria-hidden="true">${icon}</svg>${esc(label)}</a>`;
+
 function layout(o: { title: string; description: string; path: string; image?: string | null; ld: unknown[]; crumbs: [string, string][]; body: string }) {
   const url = SITE + o.path;
   const crumbLd = { '@type': 'BreadcrumbList', itemListElement: o.crumbs.map(([name, path], i) => ({ '@type': 'ListItem', position: i + 1, name, item: SITE + path })) };
@@ -184,12 +192,24 @@ function layout(o: { title: string; description: string; path: string; image?: s
 <script type="application/ld+json">${jsonLd({ '@context': 'https://schema.org', '@graph': [...o.ld, crumbLd] })}</script>
 </head>
 <body>
-<header class="bar"><a class="brand" href="/"><img src="/brand/fauna-atlas-logo-dark.svg" alt="Fauna Atlas" width="115" height="32"></a><nav><a href="/animals/">Animals</a><a href="/places/">Countries</a><a class="cta" href="/">Open the globe</a></nav></header>
+<div class="shell">
+<aside class="rail">
+<a class="brand" href="/"><img src="/brand/fauna-atlas-logo-dark.svg" alt="Fauna Atlas" width="126" height="35"></a>
+<nav class="rail-nav" aria-label="Fauna Atlas">
+${navLink('/', 'Open the globe', ICON.globe, false)}
+${navLink('/animals/', 'Animals', ICON.paw, o.crumbs[1]?.[1] === '/animals/')}
+${navLink('/places/', 'Countries', ICON.flag, o.crumbs[1]?.[1] === '/places/')}
+</nav>
+<a class="powered" href="https://github.com/bristleconelab"><img src="/brand/bristleconelab-mark-light-128.png" alt="" width="24" height="24"><span>by <b>bristlecone lab</b></span></a>
+</aside>
+<div class="sheet">
 <main>
 <nav class="crumbs" aria-label="Breadcrumb">${o.crumbs.map(([name, path], i) => (i === o.crumbs.length - 1 ? `<span aria-current="page">${esc(name)}</span>` : `<a href="${esc(path)}">${esc(name)}</a>`)).join(' <span aria-hidden="true">›</span> ')}</nav>
 ${o.body}
 </main>
-<footer><a class="powered" href="https://github.com/bristleconelab"><img src="/brand/bristleconelab-mark-dark-128.png" alt="" width="24" height="24">powered by <b>bristlecone lab</b></a><p>Fauna Atlas is an open atlas of animal life built on <a href="https://www.gbif.org">GBIF</a> and <a href="https://www.wikidata.org">Wikidata</a>. Records show where people found an animal, not a census. Code: <a href="https://github.com/bristleconelab/fauna-atlas">github.com/bristleconelab/fauna-atlas</a> (MIT). Part of <a href="https://github.com/bristleconelab">bristlecone lab</a>.</p></footer>
+<footer><p>Fauna Atlas is an open atlas of animal life built on <a href="https://www.gbif.org">GBIF</a> and <a href="https://www.wikidata.org">Wikidata</a>. Records show where people found an animal, not a census. Code: <a href="https://github.com/bristleconelab/fauna-atlas">github.com/bristleconelab/fauna-atlas</a> (MIT). Part of <a href="https://github.com/bristleconelab">bristlecone lab</a>.</p></footer>
+</div>
+</div>
 </body>
 </html>
 `;
