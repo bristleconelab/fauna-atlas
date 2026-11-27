@@ -25,7 +25,7 @@ An open atlas of animal life on a 3D globe, built on [GBIF](https://www.gbif.org
   recorded of at least 767 (736–827); spiders too patchily recorded to judge.
 - **Any animal.** Search by everyday name in any language Wikidata knows, or by scientific name: where it has been
   recorded (any range of years), its Red List status, photos of the animal itself, how high or deep it lives, when in
-  the year it is seen, size, lifespan, voice, its closest relatives, and real GPS journeys of tagged animals.
+  the year it is seen, size, lifespan, voice, its closest relatives, and real GPS journeys of tagged animals (113 species).
 - **Where people have looked.** All ~2.8 billion animal records in GBIF on one globe, or where nobody has recorded an
   animal for ten years.
 - **Compare, save and share.** Two species side by side with the ground they share, a CSV of any list, animals saved
@@ -38,8 +38,8 @@ An open atlas of animal life on a 3D globe, built on [GBIF](https://www.gbif.org
 | Any animal: where it has been recorded | A protected area: Serengeti National Park |
 |---|---|
 | ![Atlantic puffin: records across the North Atlantic, photos, Red List status and summary](docs/img/species-page.jpg) | ![Serengeti National Park outlined: 1,581 species recorded inside it](docs/img/serengeti-park.jpg) |
-| **Where people have looked** | **[Animals by country](https://fauna.bristleconelab.org/places/kenya/)** |
-| ![GBIF record density of all animals on the globe](docs/img/looked-layer.jpg) | ![Kenya: mammals recorded there, with photos and record counts](docs/img/country-page-v2.jpg) |
+| **[Real journeys of tagged animals](https://fauna.bristleconelab.org/#sp=5229230)** | **[Animals by country](https://fauna.bristleconelab.org/places/kenya/)** |
+| ![Nine tagged Arctic terns, each flying about 100,000 km between Greenland and Antarctica](docs/img/tern-journeys.jpg) | ![Kenya: mammals recorded there, with photos and record counts](docs/img/country-page-v2.jpg) |
 
 ## Data
 

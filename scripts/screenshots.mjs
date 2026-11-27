@@ -14,7 +14,7 @@ const shots = [
   { file: 'kenya-area.jpg', hash: '#at=-1.29,36.82&area=g:KEN', size: [1440, 900], wait: '.tile img.in' },
   { file: 'serengeti-park.jpg', hash: '#at=-2.33,34.83&name=Serengeti%20National%20Park&area=p:33.865,-2.202;34.017,-2.255;34.17,-2.372;34.351,-2.48;34.394,-2.604;34.547,-2.797;34.655,-2.98;34.775,-3.324;34.887,-3.186;34.882,-2.907;35.139,-2.909;35.222,-2.505;35.161,-2.394;35.267,-2.303;35.211,-2.069;35.257,-1.687;34.781,-1.419;34.641,-1.592;34.831,-1.831;34.862,-2.075;34.801,-2.198;34.545,-2.209;34.373,-2.139;34.109,-2.102;33.977,-2.086', size: [1440, 900], wait: '.tile img.in' },
   { file: 'species-page.jpg', hash: '#sp=2481353', size: [1440, 900], wait: '.photo-strip img.in' },
-  { file: 'looked-layer.jpg', hash: '#layer=looked', size: [1440, 900], wait: null },
+  { file: 'tern-journeys.jpg', hash: '#sp=5229230', size: [1440, 900], wait: '.track-item', scroll: '.tags' },
   // the static pages: path instead of a hash
   { file: 'country-page-v2.jpg', path: 'places/kenya/', size: [1280, 860], wait: '.cards img', scroll: '#mammals' },
 ]
