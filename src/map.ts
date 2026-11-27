@@ -79,7 +79,7 @@ function style(lang: string): StyleSpecification {
     projection: { type: 'globe' },
     glyphs: GLYPHS,
     sky: {
-      'sky-color': COLORS.abyss,
+      'sky-color': 'rgba(0, 0, 0, 0)', // space is the page's night sky (#map background), not a flat colour
       'horizon-color': '#2b6274',
       'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 0.9, 5, 0.6, 7, 0],
     },
@@ -118,7 +118,10 @@ function style(lang: string): StyleSpecification {
         paint: {
           'circle-color': ['match', ['get', 'kind'], 'breeding', ACTIVITY_COLORS.breeding, 'feeding', ACTIVITY_COLORS.feeding,
             'migrating', ACTIVITY_COLORS.migrating, 'season', ACTIVITY_COLORS.season, ACTIVITY_COLORS.observed],
-          'circle-radius': ['interpolate', ['linear'], ['sqrt', ['max', 1, ['get', 'n']]], 1, 3.5, 30, 10],
+          // small when the whole globe shows (places a few hundred km apart must not merge), larger closer in
+          'circle-radius': ['interpolate', ['linear'], ['zoom'],
+            1.5, ['interpolate', ['linear'], ['sqrt', ['max', 1, ['get', 'n']]], 1, 2, 30, 5],
+            5, ['interpolate', ['linear'], ['sqrt', ['max', 1, ['get', 'n']]], 1, 4, 30, 11]],
           'circle-stroke-color': COLORS.abyss, 'circle-stroke-width': 1.2, 'circle-opacity': 0.92,
         },
       },

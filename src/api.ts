@@ -298,6 +298,26 @@ export function knownIndex(base: string): Promise<Record<string, KnownRow>> {
   return knownP;
 }
 
+/** Wikidata photo (Commons file name) for each scientific name, following an old name to the accepted taxon: one
+ *  query per 60 names. Keys are the names lower-cased. For lists that have names but no GBIF keys (MiCO). */
+export async function photosByName(names: string[], signal?: AbortSignal): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (let i = 0; i < names.length; i += 60) {
+    const chunk = names.slice(i, i + 60);
+    const query = `${PREFIXES}SELECT ?name (SAMPLE(?img) AS ?image) WHERE {
+  VALUES ?name { ${chunk.map(literal).join(' ')} }
+  ?item0 wdt:P225 ?name . OPTIONAL { ?item0 wdt:P12765 ?acc } BIND(COALESCE(?acc, ?item0) AS ?item)
+  ?item wdt:P18 ?img
+} GROUP BY ?name`;
+    const b = await sparql(query, signal);
+    for (const r of b ?? []) {
+      const file = r.image?.value ? /Special:FilePath\/(.+)$/.exec(r.image.value)?.[1] : undefined;
+      if (r.name?.value && file && !/\.(svg|gif)$/i.test(file)) out.set(r.name.value.toLowerCase(), decodeURIComponent(file).replace(/_/g, ' '));
+    }
+  }
+  return out;
+}
+
 // ---------- tag tracks (stored: scripts/fetch_tracks.py writes data/tracks/) ----------
 let trackIndexP: Promise<Record<string, number>> | null = null;
 /** Species (GBIF key) with stored tag tracks, and how many animals were drawn. Empty when the site has none. */

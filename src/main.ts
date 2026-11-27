@@ -3,6 +3,7 @@ import '@fontsource-variable/source-serif-4/wght-italic.css'; // Latin names
 import '@fontsource-variable/source-serif-4/wght.css'; // Wikipedia summaries, upright: long italic text is hard to read
 import './styles.css';
 import * as api from './api';
+import { commonsThumbs } from './wiki';
 import { fmt, h, plural } from './dom';
 import { Globe } from './map';
 import { Panel } from './panel';
@@ -71,6 +72,7 @@ const panel = new Panel(panelEl, $('#panel .panel-body'), {
     input.focus();
   },
   opened: (open) => {
+    if (open) closeDrawers(); // one thing on the right at a time
     const was = document.body.classList.contains('panel-open');
     document.body.classList.toggle('panel-open', open);
     if (open && !was) sheet.reset();
@@ -161,10 +163,39 @@ $('#tour-open').addEventListener('click', () => { hint.hidden = true; tour.start
 const GROUP_NAME: Record<string, string> = lang === 'uz'
   ? { seaturtle: 'Dengiz toshbaqalari', mammal: 'Dengiz sutemizuvchilari', bird: 'Dengiz qushlari', fish: 'Baliqlar va akulalar' }
   : { seaturtle: 'Sea turtles', mammal: 'Sea mammals', bird: 'Seabirds', fish: 'Fish and sharks' };
+// The night sky behind the globe: a fixed field of faint stars (seeded, so it is the same on every visit).
+(() => {
+  const W = 1400, H = 900, c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const g = c.getContext('2d');
+  if (!g) return;
+  let seed = 20261127;
+  const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+  for (let i = 0; i < 520; i++) {
+    const r = rnd() < 0.92 ? 0.35 + rnd() * 0.5 : 0.9 + rnd() * 0.7, a = 0.25 + rnd() * 0.6;
+    g.fillStyle = `rgba(${rnd() < 0.15 ? '255,236,200' : rnd() < 0.3 ? '200,225,255' : '240,246,242'},${a.toFixed(2)})`;
+    g.beginPath(); g.arc(rnd() * W, rnd() * H, r, 0, Math.PI * 2); g.fill();
+  }
+  document.documentElement.style.setProperty('--stars', `url(${c.toDataURL('image/png')})`);
+})();
+
 const migrations = $<HTMLDialogElement>('#migrations');
+// Sea migrations and About open as drawers on the right (bottom sheets on phones), not as dialogs in the middle:
+// the globe stays in sight and in reach. One thing on the right at a time: a drawer closes the panel and back.
+function openDrawer(d: HTMLDialogElement) {
+  if (panel.isOpen) panel.close();
+  for (const o of document.querySelectorAll<HTMLDialogElement>('dialog.drawer')) if (o !== d && o.open) o.close();
+  if (!d.open) d.show();
+  document.body.classList.add('drawer-open');
+}
+function closeDrawers() { for (const o of document.querySelectorAll<HTMLDialogElement>('dialog.drawer')) if (o.open) o.close(); }
+document.querySelectorAll<HTMLDialogElement>('dialog.drawer').forEach((d) => d.addEventListener('close', () => {
+  if (![...document.querySelectorAll<HTMLDialogElement>('dialog.drawer')].some((o) => o.open)) document.body.classList.remove('drawer-open');
+}));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawers(); });
 const migFilter = $<HTMLInputElement>('#mig-filter');
 $('#migrations-open').addEventListener('click', async () => {
-  migrations.showModal();
+  openDrawer(migrations);
   const list = migrations.querySelector<HTMLElement>('.mig-list')!;
   if (list.childElementCount) return;
   try {
@@ -175,7 +206,8 @@ $('#migrations-open').addEventListener('click', async () => {
       if (!mine.length) continue;
       const ul = h('ul', {});
       for (const [id, sp] of mine) {
-        const b = h('button', { class: 'mig', attrs: { 'data-q': `${sp.common} ${sp.scientific}`.toLowerCase() } },
+        const b = h('button', { class: 'mig', attrs: { 'data-q': `${sp.common} ${sp.scientific}`.toLowerCase(), 'data-sci': sp.scientific.toLowerCase() } },
+          h('span', { class: 'mig-thumb', attrs: { 'aria-hidden': 'true' } }),
           h('span', { class: 'mig-name', text: sp.common }), h('span', { class: 'latin', text: sp.scientific }),
           h('span', { class: 'mig-n', text: sp.routes ? L(`${plural(sp.sites, 'place')}, ${plural(sp.routes, 'link')}`, `${fmt(sp.sites)} ta joy, ${fmt(sp.routes)} ta bogʻlanish`) : L(plural(sp.sites, 'place'), `${fmt(sp.sites)} ta joy`) }));
         void id;
@@ -194,6 +226,18 @@ $('#migrations-open').addEventListener('click', async () => {
       }
       list.append(h('section', { class: 'mig-group' }, h('h3', { text: `${GROUP_NAME[g]} (${mine.length})` }), ul));
     }
+    // a photo beside each name (Wikidata by scientific name; lazy, so only the visible rows load their image)
+    api.photosByName(items.map(([, sp]) => sp.scientific)).then((photos) => {
+      list.querySelectorAll<HTMLElement>('.mig').forEach((b) => {
+        const file = photos.get(b.dataset.sci!);
+        if (!file) return;
+        const [src, fallback] = commonsThumbs(file, 120);
+        const img = h('img', { attrs: { src, alt: '', loading: 'lazy', width: 52, height: 52 } }) as HTMLImageElement;
+        img.addEventListener('load', () => img.classList.add('in'));
+        img.addEventListener('error', () => { if (fallback && img.src !== fallback) img.src = fallback; }, { once: true });
+        b.querySelector('.mig-thumb')!.append(img);
+      });
+    }).catch(() => {});
   } catch {
     list.append(h('p', { class: 'fine', text: L('The list did not load. Reload the page to try again.', 'Roʻyxat yuklanmadi. Sahifani qayta yuklang.') }));
   }
@@ -207,13 +251,11 @@ migFilter.addEventListener('input', () => {
   });
 });
 migrations.querySelector('.about-close')?.addEventListener('click', () => migrations.close());
-migrations.addEventListener('click', (e) => { if (e.target === migrations) migrations.close(); });
 
 // About
 const about = $<HTMLDialogElement>('#about');
-$('#about-open').addEventListener('click', () => about.showModal());
+$('#about-open').addEventListener('click', () => openDrawer(about));
 about.querySelector('.about-close')?.addEventListener('click', () => about.close());
-about.addEventListener('click', (e) => { if (e.target === about) about.close(); });
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && !about.open && !migrations.open && panel.isOpen && document.activeElement !== $('#search')) panel.close();
