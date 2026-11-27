@@ -20,6 +20,7 @@ import argparse
 import json
 import math
 import os
+import re
 import sys
 import time
 
@@ -197,6 +198,13 @@ def parse_time(s):
     return d.timestamp()
 
 
+# Invertebrates are rarely tagged, and a mislabelled collection looks like a tag study: 46 insect species came out of
+# "TLM Tiroler Landesmuseen Entomologie" (museum specimens coded MACHINE_OBSERVATION, organismID per collector),
+# each "animal" zig-zagging hundreds of km across the Alps (2026-11-27). Their studies must say they track animals.
+TRACKING_TITLE = re.compile(r'track|telemetr|tagg|\btag|gps|argos|satellite|radio|acoustic|transmitter|movebank|logger', re.I)
+CHORDATA = 44
+
+
 def tag_studies(f, key):
     """Machine-observation datasets of a species that look like tag studies: (datasetKey, rows), most rows first."""
     r = f.gbif('occurrence/search', {**CLEAN, 'taxonKey': key, 'basisOfRecord': 'MACHINE_OBSERVATION', 'limit': 0,
@@ -281,6 +289,9 @@ def main():
             if land_mammal:
                 every = [t for t in every if t['km'] / max(1, (t['end'] - t['start']) / DAY) <= LAND_MAMMAL_MEAN_KM_PER_DAY]
             every = [t for t in every if t['km'] >= 1]  # tags that never left their spot draw nothing
+            if sp.get('phylumKey') != CHORDATA:
+                ok = {d for d in {t['dataset'] for t in every} if TRACKING_TITLE.search(dataset_meta(f, d)['title'])}
+                every = [t for t in every if t['dataset'] in ok]
             tracks = every[:MAX_TRACKS]
             if tracks:
                 metas = {d: dataset_meta(f, d) for d in {t['dataset'] for t in tracks}}
