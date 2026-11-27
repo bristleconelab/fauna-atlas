@@ -13,30 +13,33 @@
 
 </div>
 
-![The Serengeti: 1,934 animal species recorded, and how well each kind of animal is known](docs/img/life-here.jpg)
+![Kenya: 8,968 animal species recorded inside its borders, and how well each kind of animal is known](docs/img/kenya-area.jpg)
 
 An open atlas of animal life on a 3D globe, built on [GBIF](https://www.gbif.org) and [Wikidata](https://www.wikidata.org).
 
-- **Who lives here.** Click a spot to list the animals recorded in a square about 150 km across, with photos and
-  everyday names, filtered by kind: mammals, birds, reptiles, frogs, fish, insects, spiders, molluscs and more.
+- **Who lives here.** Click a spot to list the animals recorded around it: a 40 or 150 km square, the district,
+  province or country it lies in, a protected area, or an area you draw. Photos and everyday names, filtered by kind,
+  by threatened status, or by **mostly found here** (at least half of the species' records worldwide come from it).
 - **How well is it known.** For each kind of animal, the species recorded and a Chao1 lower bound for how many live
   there, with a 95 % interval and the sample coverage, and when someone last looked. The Serengeti: 700 bird species
   recorded of at least 767 (736–827); spiders too patchily recorded to judge.
 - **Any animal.** Search by everyday name in any language Wikidata knows, or by scientific name: where it has been
-  recorded, its Red List status, how high or deep it lives, when in the year it is seen, size, lifespan and voice.
+  recorded (any range of years), its Red List status, photos of the animal itself, how high or deep it lives, when in
+  the year it is seen, size, lifespan, voice, its closest relatives, and real GPS journeys of tagged animals.
 - **Where people have looked.** All ~2.8 billion animal records in GBIF on one globe, or where nobody has recorded an
   animal for ten years.
-- **Compare and share.** Two species side by side, then-and-now maps, a CSV of any square's list and a link for every
-  place and species. English and Uzbek; another language is one file of translations (`src/locales/`).
+- **Compare, save and share.** Two species side by side with the ground they share, a CSV of any list, animals saved
+  in your browser and a link for every place, area and species. English and Uzbek; another language is one file of
+  translations (`src/locales/`).
 - **A page for each of 2,998 animals and 250 countries and territories.** [The best-known animals](https://fauna.bristleconelab.org/animals/)
   (photo, summary, Red List, a map of records, the countries they are recorded in) and [animals by country](https://fauna.bristleconelab.org/places/),
   plain pages that search engines read, each opening into the globe.
 
-| Any animal: where it has been recorded | Where people have looked |
+| Any animal: where it has been recorded | A protected area: Serengeti National Park |
 |---|---|
-| ![Atlantic puffin: records across the North Atlantic, photo, Red List status and summary](docs/img/species.jpg) | ![GBIF record density of all animals on the globe](docs/img/looked.jpg) |
-| **[A page for each animal](https://fauna.bristleconelab.org/animals/snow-leopard/)** | **[Animals by country](https://fauna.bristleconelab.org/places/kenya/)** |
-| ![The snow leopard page: photo, Red List status, Uzbek name, Wikipedia summary](docs/img/animal-page.jpg) | ![Kenya: mammals recorded there, with photos and record counts](docs/img/country-page.jpg) |
+| ![Atlantic puffin: records across the North Atlantic, photos, Red List status and summary](docs/img/species-page.jpg) | ![Serengeti National Park outlined: 1,581 species recorded inside it](docs/img/serengeti-park.jpg) |
+| **Where people have looked** | **[Animals by country](https://fauna.bristleconelab.org/places/kenya/)** |
+| ![GBIF record density of all animals on the globe](docs/img/looked-layer.jpg) | ![Kenya: mammals recorded there, with photos and record counts](docs/img/country-page-v2.jpg) |
 
 ## Data
 
@@ -46,10 +49,10 @@ Everything is fetched live by the browser from open services; the site has no se
 |---|---|---|
 | Animal records, lists, maps, heights, depths, dates | [GBIF](https://www.gbif.org) occurrence search and map API | per dataset: CC0, CC BY, CC BY-NC |
 | Names and classification | GBIF Backbone Taxonomy | CC BY 4.0 |
-| Photos, names in your language, size, lifespan, sounds | [Wikidata](https://www.wikidata.org) via [QLever](https://qlever.dev), Wikimedia Commons, iNaturalist (open licences only) | CC0 / each file's licence |
+| Photos, names in your language, size, lifespan, sounds | [Wikidata](https://www.wikidata.org) via [QLever](https://qlever.dev), Wikimedia Commons, [iNaturalist](https://www.inaturalist.org) (open licences only) | CC0 / each file's licence |
 | Summaries | Wikipedia | CC BY-SA 4.0 |
 | Red List status | IUCN, through GBIF | |
-| Places | OpenStreetMap (Photon, Nominatim, OpenFreeMap), Marine Regions | ODbL, CC BY 4.0 |
+| Places, borders, protected areas | GBIF geocoder (GADM), OpenStreetMap (Photon, Nominatim, OpenFreeMap), Marine Regions | ODbL, CC BY 4.0 |
 | Sea migrations | [MiCO](https://doi.org/10.1038/s41467-025-59271-7), Bentley et al. 2025 | CC0 |
 | Imagery | NASA Blue Marble (GIBS), Sentinel-2 cloudless 2016 by EOX | public domain, CC BY 4.0 |
 

@@ -348,13 +348,13 @@ const apply = (s: ViewState) => {
     if (s.sp && s.vs) { hint.hidden = true; panel.showCompare(s.sp, s.vs); }
     else if (s.sp) {
       hint.hidden = true;
-      if (s.at) { panel.rememberPlace(s.at.lat, s.at.lon, s.area); globe.flyTo(s.at.lon, s.at.lat, 3.2); }
+      if (s.at) { panel.rememberPlace(s.at.lat, s.at.lon, s.area, s.label); globe.flyTo(s.at.lon, s.at.lat, 3.2); }
       panel.showSpecies(s.sp, !!s.at);
     } else if (s.at) {
       hint.hidden = true;
       if (s.area?.kind === 'shape') { const b = ringsBox(s.area.rings)!; globe.fitBox([b.west, b.south, b.east, b.north]); }
       else if (s.area?.kind !== 'gadm') globe.flyTo(s.at.lon, s.at.lat, 4);
-      panel.showPlace(s.at.lat, s.at.lon, s.area);
+      panel.showPlace(s.at.lat, s.at.lon, s.area, s.label);
     }
     else if (panel.isOpen) panel.close(false);
   } finally { restoring = false; }

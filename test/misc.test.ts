@@ -139,6 +139,10 @@ describe('areas in the link', () => {
     }
     expect(formatHash({ at: { lat: 1, lon: 2 }, area: { kind: 'square', precision: 3 } })).toBe('#at=1.00,2.00');
   });
+  it('keeps the name of a drawn or protected area', () => {
+    const s = parseHash(formatHash({ at: { lat: 1, lon: 2 }, area: { kind: 'shape', rings: [[[1, 1], [2, 1], [2, 2]]] }, label: 'Serengeti National Park' }));
+    expect(s.label).toBe('Serengeti National Park');
+  });
   it('ignores a broken area', () => {
     expect(parseHash('#at=1,2&area=g:<script>').area).toBeUndefined();
     expect(parseHash('#at=1,2&area=p:1,2;3').area).toBeUndefined();

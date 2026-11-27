@@ -38,7 +38,7 @@ export interface PanelHost {
   /** Species ranges as GBIF map tiles; several at once for then/now and side by side. */
   showRanges(r: RangeMode[]): void;
   flyTo(lon: number, lat: number, zoom?: number): void;
-  setHash(s: { at?: { lat: number; lon: number }; area?: AreaRef; sp?: number; vs?: number }): void;
+  setHash(s: { at?: { lat: number; lon: number }; area?: AreaRef; label?: string; sp?: number; vs?: number }): void;
   opened(open: boolean): void;
   focusSearch(placeholder: string): void;
   journeys: JourneyHost;
@@ -74,7 +74,7 @@ export class Panel {
   }
 
   get isOpen() { return !this.root.hidden; }
-  rememberPlace(lat: number, lon: number, area?: AreaRef) { this.place = { lat, lon, area }; }
+  rememberPlace(lat: number, lon: number, area?: AreaRef, label?: string) { this.place = { lat, lon, area, label }; }
 
   close(writeHash = true) {
     this.token++;
@@ -108,7 +108,7 @@ export class Panel {
     const { t, signal } = this.open();
     this.species = null;
     this.host.showRanges([]);
-    this.host.setHash({ at: { lat, lon }, area });
+    this.host.setHash({ at: { lat, lon }, area, label });
 
     // the area: a geohash square around the point, a GADM region (GBIF filters by its id) or a drawn shape
     let where: api.Where, areaText: string, outline: BBox | Ring[] | null = null;
@@ -513,7 +513,7 @@ export class Panel {
     const back = fromPlace && this.place ? { ...this.place } : null;
     const { t, signal } = this.open();
     this.species = { id, name: tx('this species') };
-    this.host.setHash({ at: back ? { lat: back.lat, lon: back.lon } : undefined, area: back?.area, sp: id });
+    this.host.setHash({ at: back ? { lat: back.lat, lon: back.lon } : undefined, area: back?.area, label: back?.label, sp: id });
     if (!back) { this.place = null; this.host.showSquare(null); }
     else this.host.showSquare(back.outline ?? (back.area?.kind === 'shape' ? back.area.rings : back.area?.kind === 'gadm' ? null : geohashBounds(geohash(back.lon, back.lat, back.area?.kind === 'square' ? back.area.precision : 3))));
     this.host.showRanges([{ key: id, mode: 'all' }]);

@@ -11,7 +11,7 @@ export type AreaRef =
   | { kind: 'square'; precision: 2 | 3 | 4 }
   | { kind: 'gadm'; id: string }
   | { kind: 'shape'; rings: [number, number][][] };
-export interface ViewState { at?: { lat: number; lon: number }; area?: AreaRef; sp?: number; vs?: number; looked?: boolean | 'age'; tour?: number }
+export interface ViewState { at?: { lat: number; lon: number }; area?: AreaRef; label?: string; sp?: number; vs?: number; looked?: boolean | 'age'; tour?: number }
 
 export function formatArea(a: AreaRef): string | null {
   if (a.kind === 'square') return a.precision === 3 ? null : `s${a.precision}`;
@@ -39,6 +39,8 @@ export function parseHash(hash: string): ViewState {
     if (Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180) s.at = { lat, lon };
   }
   if (s.at) { const area = parseArea(p.get('area')); if (area) s.area = area; }
+  const label = p.get('name');
+  if (s.area?.kind === 'shape' && label) s.label = label.slice(0, 120);
   const sp = Number(p.get('sp'));
   if (Number.isInteger(sp) && sp > 0) s.sp = sp;
   const vs = Number(p.get('vs'));
@@ -55,6 +57,7 @@ export function formatHash(s: ViewState): string {
   if (s.at) parts.push(`at=${s.at.lat.toFixed(2)},${s.at.lon.toFixed(2)}`);
   const area = s.at && s.area ? formatArea(s.area) : null;
   if (area) parts.push(`area=${encodeURIComponent(area).replace(/%2C/g, ',').replace(/%3B/g, ';').replace(/%3A/g, ':').replace(/%7C/g, '|')}`);
+  if (area && s.area?.kind === 'shape' && s.label) parts.push(`name=${encodeURIComponent(s.label)}`);
   if (s.sp) parts.push(`sp=${s.sp}`);
   if (s.sp && s.vs) parts.push(`vs=${s.vs}`);
   if (s.looked) parts.push(`layer=${s.looked === 'age' ? 'age' : 'looked'}`);
