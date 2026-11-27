@@ -1,6 +1,7 @@
 // Small pieces of science the panel shows: how complete a species list is likely to be, body size and lifespan from
 // Wikidata, whether a range has moved, and how two ranges overlap. Pure (test/science.test.ts).
 import { cellAreaKm2, type BBox } from './geo';
+import { tn } from './i18n';
 
 export interface Chao1 {
   observed: number; n: number; f1: number; f2: number;
@@ -41,11 +42,12 @@ export function chao1(records: number[], minSpecies = 10): Chao1 | null {
   return { observed, n, f1, f2, estimate, lower, upper, completeness: observed / estimate, coverage };
 }
 
-/** "8 months" / "3 years" / "1 year": short lives in months, so a mayfly does not live "0 years". */
-export function formatLife(years: number, lang: 'en' | 'uz'): string {
-  if (years < 1) { const m = Math.max(1, Math.round(years * 12)); return lang === 'uz' ? `${m} oy` : `${m} month${m === 1 ? '' : 's'}`; }
+/** "8 months" / "3 years" / "1 year": short lives in months, so a mayfly does not live "0 years". Callers that run
+ *  without the interface (tests) get English. */
+export function formatLife(years: number): string {
+  if (years < 1) { const m = Math.max(1, Math.round(years * 12)); return tn(m, '{0} month', '{0} months'); }
   const y = Math.round(years);
-  return lang === 'uz' ? `${y.toLocaleString('en-US')} yil` : `${y.toLocaleString('en-US')} year${y === 1 ? '' : 's'}`;
+  return tn(y, '{0} year', '{0} years');
 }
 
 // ---------- body size and lifespan from Wikidata quantities ----------

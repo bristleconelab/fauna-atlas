@@ -1,6 +1,5 @@
 // Kinds of animals a non-specialist recognises (as GBIF backbone keys), the vertical zones from the deep sea to the
 // mountain tops, and small summaries. Pure (test/taxa.test.ts).
-import { lang } from './i18n.ts';
 
 /** A species recorded somewhere: its GBIF key, records there, and the kind of animal it is. */
 export interface Taxon {
@@ -70,7 +69,6 @@ export function planGroups(total: number, counts: Map<number, number>, complete:
   return { ask: present.filter((g) => g !== biggest).map((g) => g.id), rest: biggest.id };
 }
 
-export const GROUP_LABEL: Record<GroupId, string> = Object.fromEntries(GROUPS.map((g) => [g.id, lang === 'uz' ? g.uz : g.label])) as Record<GroupId, string>;
 
 /** Group of a GBIF species record from its class, phylum and order keys (for search hits and species pages). */
 export function groupOfKeys(classKey?: number | null, phylumKey?: number | null, orderKey?: number | null): GroupId {
@@ -83,10 +81,8 @@ export function groupOfKeys(classKey?: number | null, phylumKey?: number | null,
   return 'other';
 }
 
-export const IUCN_LABEL: Record<string, string> = lang === 'uz' ? {
-  EX: 'Yoʻq boʻlib ketgan', EW: 'Tabiatda yoʻq boʻlib ketgan', CR: 'Yoʻqolish arafasida', EN: 'Yoʻqolib borayotgan',
-  VU: 'Zaif', NT: 'Xavf ostiga yaqin', LC: 'Xavf ostida emas', DD: 'Maʼlumot yetarli emas',
-} : {
+/** IUCN Red List categories, in English (translated where shown: src/labels.ts). */
+export const IUCN_EN: Record<string, string> = {
   EX: 'Extinct', EW: 'Extinct in the wild', CR: 'Critically endangered', EN: 'Endangered', VU: 'Vulnerable',
   NT: 'Near threatened', LC: 'Least concern', DD: 'Data deficient',
 };

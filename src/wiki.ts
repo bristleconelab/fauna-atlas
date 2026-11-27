@@ -47,10 +47,16 @@ export function articleTitle(url: string): string | null {
 /** A readable name: the label in the reader's language, then their common name, then the English label (usually
  *  matches Wikipedia: "long-finned pilot whale"), then an English common name; never the scientific name itself
  *  (Wikidata often labels taxa with it). */
-export function pickName(b: Record<string, { value: string } | undefined>, scientific?: string): string | undefined {
+export function pickName(b: Record<string, { value: string } | undefined>, scientific?: string, lang = 'en'): string | undefined {
   const sci = scientific?.trim().toLowerCase();
-  for (const k of ['label', 'common', 'labelEn', 'commonEn']) {
-    const v = b[k]?.value?.trim();
+  // the English Wikipedia title before the English common names: those are a random SAMPLE of several ("Common tiger
+  // wanderer" for the monarch, whose English label is only its scientific name)
+  const title = b.articleEn?.value ? decodeURIComponent(b.articleEn.value.split('/wiki/')[1] ?? '').replace(/_/g, ' ').replace(/\s*\([^)]*\)\s*$/, '') : undefined;
+  // in English the reader's own common name is that same random sample, so it waits behind the title too
+  const tt = title ? { value: title } : undefined;
+  const order = lang === 'en' ? [b.label, b.labelEn, tt, b.common, b.commonEn] : [b.label, b.common, b.labelEn, tt, b.commonEn];
+  for (const v0 of order.map((x) => x?.value)) {
+    const v = v0?.trim();
     // skip catalogue entries that are not names ("Species code: Hs", seen on Halophila stipulacea)
     if (v && v.toLowerCase() !== sci && !/:|\bcode\b/i.test(v)) return v.charAt(0).toUpperCase() + v.slice(1);
   }
@@ -66,7 +72,7 @@ export function parseWikidata(bindings: Record<string, { value: string } | undef
     const article = b.article?.value ?? b.articleEn?.value;
     const articleLang = b.article?.value ? lang : b.articleEn?.value ? 'en' : undefined;
     const sci = b.sci?.value;
-    out.set(id, { name: pickName(b, sciById?.get(id) ?? sci), image, article, articleLang, sci });
+    out.set(id, { name: pickName(b, sciById?.get(id) ?? sci, lang), image, article, articleLang, sci });
   }
   return out;
 }

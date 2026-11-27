@@ -8,7 +8,7 @@ import { h, fmt, plural } from './dom';
 import { greatCircle } from './geo';
 import { ACTIVITY_COLORS, TRACK_COLORS, type ActivityKind } from './map';
 import { decadeCounts, trackAtHours, type TagTrack, type TagTracks } from './tracks';
-import { L, lang, MONTHS_UZ } from './i18n';
+import { t, MONTHS as MONTH_NAMES } from './i18n';
 
 export type Overlay = 'micoRoutes' | 'micoSites' | 'tracks' | 'heads';
 export interface JourneyHost {
@@ -20,7 +20,7 @@ export interface JourneyHost {
   base: string;
 }
 
-const FULL_MONTHS = lang === 'uz' ? MONTHS_UZ : ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const FULL_MONTHS = MONTH_NAMES;
 const MONTHS = FULL_MONTHS.map((m) => m.slice(0, 3));
 const ext = { target: '_blank', rel: 'noopener' };
 const fc = (features: GeoJSON.Feature[]): GeoJSON.FeatureCollection => ({ type: 'FeatureCollection', features });
@@ -35,9 +35,8 @@ export function activityKind(act: string): ActivityKind {
   if (/winter|summer|hibernat/i.test(act)) return 'season';
   return 'observed';
 }
-export const ACTIVITY_LABEL: Record<ActivityKind, string> = lang === 'uz'
-  ? { breeding: 'koʻpayish, uya yoki bolalash', feeding: 'oziqlanish', migrating: 'yoʻldagi toʻxtash', season: 'mavsumni oʻtkazadi', observed: 'koʻrilgan' }
-  : { breeding: 'breeding, nesting or nursery', feeding: 'feeding', migrating: 'stopover on the move', season: 'spends a season', observed: 'seen' };
+const ACTIVITY_EN: Record<ActivityKind, string> = { breeding: 'breeding, nesting or nursery', feeding: 'feeding', migrating: 'stopover on the move', season: 'spends a season', observed: 'seen' }
+export const ACTIVITY_LABEL = Object.fromEntries(Object.entries(ACTIVITY_EN).map(([k, v]) => [k, t(v)])) as Record<ActivityKind, string>;
 
 /** The busiest run of three consecutive months (wrapping Dec to Jan), or null when records are spread evenly. */
 export function peakSeason(m: number[]): { from: number; to: number; share: number } | null {
@@ -68,8 +67,8 @@ export function renderJourneys(o: JourneyOpts, mount: HTMLElement, host: Journey
   let monthTimer = 0;
   const cleanup = () => { stopped = true; cancelAnimationFrame(raf); for (const x of ['micoSites', 'micoRoutes', 'tracks', 'heads'] as const) host.setOverlay(x, null); host.dimRange(false); clearInterval(monthTimer); host.showMonth(null, null); };
   const ok = () => alive() && !stopped;
-  const travel = h('section', { class: 'journeys', attrs: { hidden: true } }, h('h3', { text: L('How it travels', 'Qanday sayohat qiladi') }));
-  const when = h('section', { class: 'seasons' }, h('h3', { text: L('When it is recorded', 'Qachon qayd etilgan') }), h('p', { class: 'fine', text: L('Loading…', 'Yuklanmoqda…') }));
+  const travel = h('section', { class: 'journeys', attrs: { hidden: true } }, h('h3', { text: t('How it travels') }));
+  const when = h('section', { class: 'seasons' }, h('h3', { text: t('When it is recorded') }), h('p', { class: 'fine', text: t('Loading…') }));
   mount.append(travel, when);
 
   const tagBox = h('div', { class: 'tags' });
@@ -102,7 +101,7 @@ export function renderJourneys(o: JourneyOpts, mount: HTMLElement, host: Journey
     host.dimRange(true);
     frameAll();
 
-    const play = h('button', { class: 'btn small', text: L('Play journeys', 'Yoʻllarni ijro etish') });
+    const play = h('button', { class: 'btn small', text: t('Play journeys') });
     const clock = h('span', { class: 'clock', attrs: { 'aria-live': 'off' } });
     play.addEventListener('click', () => {
       cancelAnimationFrame(raf);
@@ -119,15 +118,15 @@ export function renderJourneys(o: JourneyOpts, mount: HTMLElement, host: Journey
           host.setOverlay('tracks', fc(mine().flatMap(([tr, i]) => trackAtHours(tr, hours).upto.map((part) => ({ type: 'Feature' as const, properties: props(tr, i), geometry: { type: 'LineString' as const, coordinates: part } })))));
           host.setOverlay('heads', heads(hours));
           const moving = mine().filter(([tr]) => (tr.p.at(-1)?.at(-1)?.[2] ?? 0) >= hours).length;
-          clock.textContent = L(`Day ${fmt(Math.round(hours / 24))} after tagging, ${plural(moving, 'animal')} still sending`, `Belgilangandan keyin ${fmt(Math.round(hours / 24))}-kun, ${fmt(moving)} ta hayvon hali signal beryapti`);
+          clock.textContent = t('Day {0} after tagging, {1} still sending', fmt(Math.round(hours / 24)), plural(moving, 'animal'), fmt(moving));
         }
         if (f < 1) raf = requestAnimationFrame(frame);
-        else { clock.textContent = L('Every journey, from tagging to the last signal', 'Har bir yoʻl, belgilashdan oxirgi signalgacha'); draw(); }
+        else { clock.textContent = t('Every journey, from tagging to the last signal'); draw(); }
       };
       raf = requestAnimationFrame(frame);
     });
 
-    const showAll = h('button', { class: 'link-btn', text: L('Show every animal', 'Hamma hayvonlarni koʻrsatish'), attrs: { hidden: true } });
+    const showAll = h('button', { class: 'link-btn', text: t('Show every animal'), attrs: { hidden: true } });
     const list = h('ol', { class: 'track-list' }, ...drawn.slice(0, MAX_LISTED).map((tr, i) => {
       const b = h('button', { class: 'track-item', attrs: { 'aria-pressed': 'false' } },
         h('span', { class: 'dot', attrs: { style: `background:${TRACK_COLORS[i % TRACK_COLORS.length]}` } }), `${tr.a}: ${fmt(tr.km)} km, ${years(tr)}`);
@@ -144,12 +143,10 @@ export function renderJourneys(o: JourneyOpts, mount: HTMLElement, host: Journey
     showAll.addEventListener('click', () => list.querySelector<HTMLButtonElement>('.track-item[aria-pressed="true"]')?.click());
     const dropped = drawn.reduce((a, t) => a + t.d, 0);
     tagBox.replaceChildren(
-      h('p', { text: L(`The real journeys of ${plural(data.animals, 'tagged animal')}, from GPS and satellite tags${data.animals > drawn.length ? ` (the ${drawn.length} longest are drawn)` : ''}. The longest: ${fmt(drawn[0].km)} km. Each colour is one animal; pick one to see it alone.`,
-        `${fmt(data.animals)} ta belgilangan hayvonning GPS va sunʼiy yoʻldosh belgilaridagi haqiqiy yoʻllari${data.animals > drawn.length ? ` (eng uzun ${drawn.length} tasi chizilgan)` : ''}. Eng uzuni: ${fmt(drawn[0].km)} km. Har bir rang bitta hayvon; alohida koʻrish uchun bittasini tanlang.`) }),
+      h('p', { text: t('The real journeys of {0}, from GPS and satellite tags{1}. The longest: {2} km. Each colour is one animal; pick one to see it alone.', plural(data.animals, 'tagged animal'), data.animals > drawn.length ? ` (the ${drawn.length} longest are drawn)` : '', fmt(drawn[0].km), fmt(data.animals), data.animals > drawn.length ? ` (eng uzun ${drawn.length} tasi chizilgan)` : '') }),
       h('div', { class: 'play-row' }, play, clock), list, showAll,
-      h('p', { class: 'fine' }, L('Tracks from ', 'Yoʻllar manbasi: '), ...data.studies.flatMap((st, i) => [i ? ', ' : '', h('a', { text: st.title, attrs: { href: st.url, ...ext } }), ` (${st.licence})`]), L(', through GBIF.', ', GBIF orqali.')),
-      h('p', { class: 'fine', text: L(`Lines follow the fixes the tags sent. Gaps of more than 20 days are left open. Fixes that would need more than ${fmt(data.cap)} km a day are dropped as location errors${dropped ? ` (${fmt(dropped)} here)` : ''}; moves under 5 km do not add to the distance.`,
-        `Chiziqlar belgilar yuborgan nuqtalar boʻylab. 20 kundan uzun uzilishlar ochiq qoldiriladi. Kuniga ${fmt(data.cap)} km dan tez harakatni talab qiladigan nuqtalar joylashuv xatosi sifatida tashlangan${dropped ? ` (bu yerda ${fmt(dropped)} ta)` : ''}; 5 km dan kichik siljishlar masofaga qoʻshilmaydi.`) }));
+      h('p', { class: 'fine' }, t('Tracks from '), ...data.studies.flatMap((st, i) => [i ? ', ' : '', h('a', { text: st.title, attrs: { href: st.url, ...ext } }), ` (${st.licence})`]), t(', through GBIF.')),
+      h('p', { class: 'fine', text: t('Lines follow the fixes the tags sent. Gaps of more than 20 days are left open. Fixes that would need more than {0} km a day are dropped as location errors{1}; moves under 5 km do not add to the distance.', fmt(data.cap), dropped ? ` (${fmt(dropped)} here)` : '', dropped ? ` (bu yerda ${fmt(dropped)} ta)` : '') }));
   };
 
   // ---- MiCO, for the 109 sea animals it covers: the places they use; links between them are shown on request ----
@@ -169,21 +166,20 @@ export function renderJourneys(o: JourneyOpts, mount: HTMLElement, host: Journey
     // A link says "animals that use this place also use that one"; drawn as a line it reads as the way they went,
     // which it is not. So the places show, and the links only when asked for, dashed and labelled.
     let linksOn = false;
-    const links = h('button', { class: 'btn small quiet', attrs: { 'aria-pressed': 'false' }, text: L('Show which places are linked', 'Qaysi joylar bogʻliqligini koʻrsatish') });
+    const links = h('button', { class: 'btn small quiet', attrs: { 'aria-pressed': 'false' }, text: t('Show which places are linked') });
     links.addEventListener('click', () => {
       linksOn = !linksOn;
       links.setAttribute('aria-pressed', String(linksOn));
-      links.textContent = linksOn ? L('Hide the links', 'Bogʻlanishlarni yashirish') : L('Show which places are linked', 'Qaysi joylar bogʻliqligini koʻrsatish');
+      links.textContent = linksOn ? t('Hide the links') : t('Show which places are linked');
       host.setOverlay('micoRoutes', linksOn ? routes : null);
     });
-    const frame = h('button', { class: 'btn small quiet', text: L('Show on the globe', 'Globusda koʻrsatish'), on: { click: () => host.fitTo(points) } });
+    const frame = h('button', { class: 'btn small quiet', text: t('Show on the globe'), on: { click: () => host.fitTo(points) } });
     micoBox.append(
-      h('p', { text: L(`Places this species uses on its migrations: ${plural(d.sites.length, 'place')}${d.routes.length ? `, ${plural(d.routes.length, 'link')} between them` : ''}, from published tracking and tagging studies.`,
-        `Bu tur migratsiyada foydalanadigan joylar: ${fmt(d.sites.length)} ta joy${d.routes.length ? `, ular orasida ${fmt(d.routes.length)} ta bogʻlanish` : ''}; eʼlon qilingan kuzatuv va belgilash tadqiqotlaridan.`) }),
+      h('p', { text: t('Places this species uses on its migrations: {0}{1}, from published tracking and tagging studies.', plural(d.sites.length, 'place'), d.routes.length ? `, ${plural(d.routes.length, 'link')} between them` : '', fmt(d.sites.length), d.routes.length ? `, ular orasida ${fmt(d.routes.length)} ta bogʻlanish` : '') }),
       h('ul', { class: 'legend-dots' }, ...kinds.map((k) => h('li', {}, h('span', { class: 'dot', attrs: { style: `background:${ACTIVITY_COLORS[k]}` } }), ACTIVITY_LABEL[k]))),
       h('div', { class: 'btn-row' }, frame, d.routes.length ? links : null,
-        h('a', { class: 'btn small quiet', text: L('Tag tracks in Ocean Life Atlas', 'Ocean Life Atlas da belgi yoʻllari'), attrs: { href: `https://oceanlife.bristleconelab.org/#sp=${wormsId}`, ...ext } })),
-      h('p', { class: 'fine' }, L('A link means animals seen at one place were also seen at the other; it is not the way they went (dashed, straight across the globe). ', 'Bogʻlanish bir joyda koʻrilgan hayvonlar boshqasida ham koʻrilganini bildiradi; bu ular bosib oʻtgan yoʻl emas (uzuq chiziq, globus boʻylab toʻgʻri). '), 'MiCO, ',
+        h('a', { class: 'btn small quiet', text: t('Tag tracks in Ocean Life Atlas'), attrs: { href: `https://oceanlife.bristleconelab.org/#sp=${wormsId}`, ...ext } })),
+      h('p', { class: 'fine' }, t('A link means animals seen at one place were also seen at the other; it is not the way they went (dashed, straight across the globe). '), 'MiCO, ',
         h('a', { text: 'Bentley et al. 2025', attrs: { href: 'https://doi.org/10.1038/s41467-025-59271-7', ...ext } }), ', CC0.'));
   }).catch(() => {});
 
@@ -191,14 +187,14 @@ export function renderJourneys(o: JourneyOpts, mount: HTMLElement, host: Journey
   const yearOnGlobe = () => {
     let month = 0, playing = false;
     const label = h('span', { class: 'month-now', attrs: { 'aria-live': 'polite' } });
-    const slider = h('input', { attrs: { type: 'range', min: '1', max: '12', step: '1', value: '1', 'aria-label': L('Month shown on the globe', 'Globusda koʻrsatilgan oy') } }) as HTMLInputElement;
-    const play = h('button', { class: 'btn small', text: L('Play the year', 'Yilni ijro etish') });
-    const stop = h('button', { class: 'link-btn', text: L('Back to all year', 'Butun yilga qaytish'), attrs: { hidden: true } });
+    const slider = h('input', { attrs: { type: 'range', min: '1', max: '12', step: '1', value: '1', 'aria-label': t('Month shown on the globe') } }) as HTMLInputElement;
+    const play = h('button', { class: 'btn small', text: t('Play the year') });
+    const stop = h('button', { class: 'link-btn', text: t('Back to all year'), attrs: { hidden: true } });
     const go = (m: number) => { month = m; slider.value = String(m); label.textContent = FULL_MONTHS[m - 1]; host.showMonth(o.id, m); stop.hidden = false; };
-    const pause = () => { playing = false; clearInterval(monthTimer); play.textContent = L('Play the year', 'Yilni ijro etish'); };
+    const pause = () => { playing = false; clearInterval(monthTimer); play.textContent = t('Play the year'); };
     play.addEventListener('click', () => {
       if (playing) { pause(); return; }
-      playing = true; play.textContent = L('Pause', 'Toʻxtatish');
+      playing = true; play.textContent = t('Pause');
       go(month ? (month % 12) + 1 : 1);
       monthTimer = window.setInterval(() => { if (!ok()) { pause(); return; } go((month % 12) + 1); }, 2200); // adhoc tiles take ~1 s each
     });
@@ -210,9 +206,9 @@ export function renderJourneys(o: JourneyOpts, mount: HTMLElement, host: Journey
       li.addEventListener('click', () => { pause(); go((i % 12) + 1); });
     }));
     return h('div', { class: 'year-globe' },
-      h('p', { class: 'yg-title', text: L('The year on the globe', 'Yil globusda') }),
+      h('p', { class: 'yg-title', text: t('The year on the globe') }),
       h('div', { class: 'yg-row' }, play, slider, label), stop,
-      h('p', { class: 'fine', text: L('Each month shows the records made in that month, in any year (dots, from a live GBIF search, so a month can take a moment). Where they move with the seasons, you see it: monarch butterflies north in summer and in Mexico in winter.', 'Har oy oʻsha oyda, istalgan yilda qilingan yozuvlarni koʻrsatadi. Fasllar bilan koʻchsa, koʻrinadi: monarx kapalaklari yozda shimolda, qishda Meksikada.') }));
+      h('p', { class: 'fine', text: t('Each month shows the records made in that month, in any year (dots, from a live GBIF search, so a month can take a moment). Where they move with the seasons, you see it: monarch butterflies north in summer and in Mexico in winter.') }));
   };
 
   // ---- seasons and decades ----
@@ -236,33 +232,32 @@ function monthChart(m: number[], label: string): HTMLElement {
 }
 function seasonLine(m: number[], where: string): string {
   const p = peakSeason(m);
-  return p ? L(`${where}: most records from ${FULL_MONTHS[p.from]} to ${FULL_MONTHS[p.to]} (${Math.round(p.share * 100)} %).`, `${where}: koʻp yozuvlar ${FULL_MONTHS[p.from]}dan ${FULL_MONTHS[p.to]}gacha (${Math.round(p.share * 100)} %).`)
-    : L(`${where}: recorded all year round, without a clear season.`, `${where}: yil boʻyi qayd etilgan, aniq mavsumsiz.`);
+  return p ? t('{0}: most records from {1} to {2} ({3} %).', where, FULL_MONTHS[p.from], FULL_MONTHS[p.to], Math.round(p.share * 100))
+    : t('{0}: recorded all year round, without a clear season.', where);
 }
 
 function renderSeasons(section: HTMLElement, north: number[], south: number[], dec: { decade: number; records: number }[]) {
   const nN = north.reduce((a, b) => a + b, 0), nS = south.reduce((a, b) => a + b, 0), n = nN + nS;
-  section.replaceChildren(h('h3', { text: L('When it is recorded', 'Qachon qayd etilgan') }));
+  section.replaceChildren(h('h3', { text: t('When it is recorded') }));
   if (n >= 30) {
     const both = nN >= 30 && nS >= 30 && Math.min(nN, nS) / n >= 0.1;
     if (both) section.append(
-      h('p', { text: seasonLine(north, L('North of the equator', 'Ekvatordan shimolda')) }), monthChart(north, L('Records by month, north of the equator', 'Oylar boʻyicha yozuvlar, ekvatordan shimolda')),
-      h('p', { text: seasonLine(south, L('South of the equator', 'Ekvatordan janubda')) }), monthChart(south, L('Records by month, south of the equator', 'Oylar boʻyicha yozuvlar, ekvatordan janubda')));
+      h('p', { text: seasonLine(north, t('North of the equator')) }), monthChart(north, t('Records by month, north of the equator')),
+      h('p', { text: seasonLine(south, t('South of the equator')) }), monthChart(south, t('Records by month, south of the equator')));
     else {
       const m = nN >= nS ? north : south;
-      section.append(h('p', { text: seasonLine(m, nN >= nS ? L('Mostly north of the equator', 'Asosan ekvatordan shimolda') : L('Mostly south of the equator', 'Asosan ekvatordan janubda')) }), monthChart(m, L('Records by month', 'Oylar boʻyicha yozuvlar')));
+      section.append(h('p', { text: seasonLine(m, nN >= nS ? t('Mostly north of the equator') : t('Mostly south of the equator')) }), monthChart(m, t('Records by month')));
     }
-    section.append(h('p', { class: 'fine', text: L(`From all ${fmt(n)} dated GBIF records. North and south of the equator the seasons are opposite, so they are kept apart. Months also show when people go out looking (spring birding, summer holidays).`,
-      `Sanasi bor barcha ${fmt(n)} ta GBIF yozuvi asosida. Ekvatorning shimoli va janubida fasllar teskari, shuning uchun alohida. Oylar odamlar qachon izlashga chiqishini ham koʻrsatadi (bahorgi qush kuzatish, yozgi taʼtil).`) }));
+    section.append(h('p', { class: 'fine', text: t('From all {0} dated GBIF records. North and south of the equator the seasons are opposite, so they are kept apart. Months also show when people go out looking (spring birding, summer holidays).', fmt(n)) }));
   }
   if (dec.length > 1) {
     const max = Math.max(...dec.map((d) => d.records));
     const tick = (d: number, i: number) => (i === 0 || i === dec.length - 1 || (d % 50 === 0 && i > 2 && dec.length - 1 - i > 2) ? String(d) : '');
     section.append(
-      h('ol', { class: 'decades', attrs: { 'aria-label': L('Records by decade', 'Oʻn yilliklar boʻyicha yozuvlar') } }, ...dec.map((d) => h('li', { attrs: { title: `${d.decade}s: ${fmt(d.records)}` } },
+      h('ol', { class: 'decades', attrs: { 'aria-label': t('Records by decade') } }, ...dec.map((d) => h('li', { attrs: { title: `${d.decade}s: ${fmt(d.records)}` } },
         h('span', { class: 'mbar', attrs: { style: `--h:${Math.max(d.records ? 4 : 0, Math.sqrt(d.records / max) * 100)}%` } })))),
       h('ol', { class: 'decade-axis', attrs: { 'aria-hidden': 'true' } }, ...dec.map((d, i) => h('li', { text: tick(d.decade, i) }))),
-      h('p', { class: 'fine', text: L('Records per decade; bar height grows with the square root, so small decades stay visible.', 'Oʻn yilliklar boʻyicha yozuvlar; ustun balandligi kvadrat ildiz boʻyicha oʻsadi, shuning uchun kichik oʻn yilliklar ham koʻrinadi.') }));
+      h('p', { class: 'fine', text: t('Records per decade; bar height grows with the square root, so small decades stay visible.') }));
   }
-  if (n < 30 && dec.length <= 1) section.append(h('p', { class: 'fine', text: L('Too few dated records to show a pattern.', 'Qonuniyat koʻrsatish uchun sanali yozuvlar juda kam.') }));
+  if (n < 30 && dec.length <= 1) section.append(h('p', { class: 'fine', text: t('Too few dated records to show a pattern.') }));
 }

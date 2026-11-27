@@ -1,7 +1,7 @@
 // Guided tour: a few stops that each open a real view of the atlas (a place, a species, a layer) with two or three
 // sentences on what to notice. The steps are a sequence, so they are numbered.
 import { h } from './dom';
-import { L } from './i18n';
+import { t } from './i18n';
 
 export interface TourHost {
   place(lat: number, lon: number, zoom: number): void;
@@ -15,33 +15,26 @@ export interface TourHost {
 interface Stop { title: string; text: string; go: (h: TourHost) => void }
 
 export const STOPS: Stop[] = [
-  { title: L('Where people have looked for animals', 'Odamlar hayvonlarni qayerda izlagan'),
-    text: L('Every coloured square holds GBIF records of animals; the brighter, the more. Europe and North America glow because millions of people record birds there; much of Africa, Central Asia and the Amazon stays dark. A short list usually means few people looked, not that few animals live there.',
-      'Har bir rangli kvadratchada hayvonlarning GBIF yozuvlari bor; qanchalik yorqin boʻlsa, shunchalik koʻp. Yevropa va Shimoliy Amerika millionlab odam qush qayd etgani uchun porlaydi; Afrika, Markaziy Osiyo va Amazonkaning katta qismi qorongʻi. Qisqa roʻyxat odatda kam hayvonni emas, kam odam qaraganini bildiradi.'),
+  { title: t('Where people have looked for animals'),
+    text: t('Every coloured square holds GBIF records of animals; the brighter, the more. Europe and North America glow because millions of people record birds there; much of Africa, Central Asia and the Amazon stays dark. A short list usually means few people looked, not that few animals live there.'),
     go: (x) => { x.closePanel(); x.layer('records'); x.globe(20, 25, 1.4); } },
-  { title: L('The Serengeti', 'Serengeti'),
-    text: L('Wildebeest, zebras, lions and more than five hundred kinds of birds. Use the chips to see one kind of animal at a time.',
-      'Gnu antilopalari, zebralar, sherlar va besh yuzdan ortiq qush turi. Bir turkumni koʻrish uchun tugmachalardan foydalaning.'),
+  { title: t('The Serengeti'),
+    text: t('Wildebeest, zebras, lions and more than five hundred kinds of birds. Use the chips to see one kind of animal at a time.'),
     go: (x) => { x.layer(false); x.place(-2.33, 34.83, 5); } },
-  { title: L('The Amazon near Manaus', 'Manaus yaqinidagi Amazonka'),
-    text: L('One of the richest places on Earth, and one of the least surveyed: look at the completeness estimate and the share of species recorded only once.',
-      'Yer yuzidagi eng boy joylardan biri va eng kam oʻrganilganlaridan biri: toʻliqlik bahosiga va faqat bir marta qayd etilgan turlar ulushiga qarang.'),
+  { title: t('The Amazon near Manaus'),
+    text: t('One of the richest places on Earth, and one of the least surveyed: look at the completeness estimate and the share of species recorded only once.'),
     go: (x) => { x.layer(false); x.place(-3.1, -60.0, 5); } },
-  { title: L('The Alpine ibex lives up high', 'Alp togʻ echkisi baland joyda yashaydi'),
-    text: L('Open "From the deep sea to the mountains": most of its records with a height lie between 2,000 and 3,000 metres, above the tree line of the Alps.',
-      '"Dengiz tubidan togʻ choʻqqisigacha" boʻlimini oching: balandligi yozilgan yozuvlarining aksariyati 2 000–3 000 metrda, Alp togʻlaridagi daraxtlar chegarasidan yuqorida.'),
+  { title: t('The Alpine ibex lives up high'),
+    text: t('Open "From the deep sea to the mountains": most of its records with a height lie between 2,000 and 3,000 metres, above the tree line of the Alps.'),
     go: (x) => { x.layer(false); x.species(2441055); } },
-  { title: L('Monarch butterflies: a migration by insects', 'Monarx kapalaklari: hasharotlar migratsiyasi'),
-    text: L('Under "When it is recorded", press "Play the year": the butterflies spread north over the summer and gather in Mexico for the winter.',
-      '"Qachon qayd etilgan" ostida "Yilni ijro etish"ni bosing: kapalaklar yozda shimolga tarqaladi, qishda Meksikada toʻplanadi.'),
+  { title: t('Monarch butterflies: a migration by insects'),
+    text: t('Under "When it is recorded", press "Play the year": the butterflies spread north over the summer and gather in Mexico for the winter.'),
     go: (x) => { x.layer(false); x.species(5133088); } },
-  { title: L('Polar bears: then and now', 'Oq ayiqlar: oldin va hozir'),
-    text: L('Press "Then and now" to see records before 2000 in purple and since 2000 in yellow. Ask what changed: the bears, or where people went looking.',
-      '2000 gacha boʻlgan yozuvlarni binafsha va 2000 dan keyingilarini sariq rangda koʻrish uchun "Oldin va hozir"ni bosing. Nima oʻzgarganini oʻylang: ayiqlarmi yoki odamlar izlagan joylarmi.'),
+  { title: t('Polar bears: then and now'),
+    text: t('Press "Then and now" to see records before 2000 in purple and since 2000 in yellow. Ask what changed: the bears, or where people went looking.'),
     go: (x) => { x.layer(false); x.species(2433451); } },
-  { title: L('Ground nobody has looked at for ten years', 'Oʻn yildan beri hech kim qaramagan joylar'),
-    text: L('Green squares have animal records from the last ten years; grey ones only older records. Grey ground is where the next naturalist will find the most news.',
-      'Yashil kvadratchalarda oxirgi oʻn yildagi hayvon yozuvlari bor; kulranglarida faqat eski yozuvlar. Kulrang joylar keyingi tabiatshunos eng koʻp yangilik topadigan joy.'),
+  { title: t('Ground nobody has looked at for ten years'),
+    text: t('Green squares have animal records from the last ten years; grey ones only older records. Grey ground is where the next naturalist will find the most news.'),
     go: (x) => { x.closePanel(); x.layer('age'); x.globe(60, 30, 1.4); } },
 ];
 
@@ -52,19 +45,19 @@ export function initTour(card: HTMLElement, host: TourHost) {
   const count = h('span', { class: 'tour-count' });
   const prev = h('button', { class: 'btn small quiet' });
   const next = h('button', { class: 'btn small' });
-  const close = h('button', { class: 'about-close', attrs: { 'aria-label': L('End the tour', 'Sayohatni tugatish') }, text: '×' });
+  const close = h('button', { class: 'about-close', attrs: { 'aria-label': t('End the tour') }, text: '×' });
   card.append(close, count, title, text, h('div', { class: 'btn-row' }, prev, next));
 
   const show = (i: number, move = true) => {
     step = Math.max(0, Math.min(STOPS.length - 1, i));
     const s = STOPS[step];
     card.hidden = false;
-    count.textContent = L(`Stop ${step + 1} of ${STOPS.length}`, `${STOPS.length} tadan ${step + 1}-bekat`);
+    count.textContent = t('Stop {0} of {1}', step + 1, STOPS.length);
     title.textContent = s.title;
     text.textContent = s.text;
-    prev.textContent = L('Back', 'Orqaga');
+    prev.textContent = t('Back');
     prev.hidden = step === 0;
-    next.textContent = step === STOPS.length - 1 ? L('Finish', 'Tugatish') : L('Next', 'Keyingisi');
+    next.textContent = step === STOPS.length - 1 ? t('Finish') : t('Next');
     if (move) s.go(host);
     host.setStep(step + 1);
   };

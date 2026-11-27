@@ -5,14 +5,15 @@ import * as api from './api';
 import { h, fmt, loadPhoto, plural, download } from './dom';
 import { bboxToWkt, formatLatLon, geohash, geohashBounds, type BBox } from './geo';
 import {
-  countByGroup, interleaveGroups, GROUPS, GROUP_LABEL, groupOfKeys, IUCN_LABEL, rankSpecies, THREATENED, verticalRange, ZONES,
+  countByGroup, interleaveGroups, GROUPS, groupOfKeys, rankSpecies, THREATENED, verticalRange, ZONES,
   type GroupId, type Taxon,
 } from './taxa';
 import { articleTitle, commonsAudio, commonsThumbs, type WikiInfo } from './wiki';
 import { renderJourneys, type JourneyHost } from './journeys';
 import { silhouette } from './silhouettes';
 import { chao1, formatLength, formatLife, formatMass, parseTraits, rangeOverlap, toCsv, type Traits } from './science';
-import { L, count, lang } from './i18n';
+import { t as tx, tn, lang } from './i18n'; // t is the view token here, tr a Traits
+import { GROUP_LABEL, IUCN_LABEL } from './labels';
 
 const PAGE = 36;
 /** Species whose photos are looked up before the first screen is drawn, so it can lead with ones that have a photo. */
@@ -53,7 +54,7 @@ export class Panel {
   stopCompare() {
     this.comparingFrom = null;
     const input = document.querySelector<HTMLInputElement>('#search');
-    if (input) input.placeholder = input.dataset[lang === 'uz' ? 'uzPlaceholder' : 'placeholder'] ?? input.placeholder;
+    if (input) input.placeholder = tx(input.dataset.placeholder ?? 'Animal or place');
   }
 
   private runCleanups() { for (const c of this.cleanups.splice(0)) c(); }
@@ -103,13 +104,13 @@ export class Panel {
     this.host.showSquare(box);
     const wkt = bboxToWkt(box);
 
-    const nav = from ? h('button', { class: 'back', text: L(`Back to ${from.name}`, `${from.name} sahifasiga qaytish`), on: { click: () => this.showSpecies(from.id) } }) : null;
+    const nav = from ? h('button', { class: 'back', text: tx('Back to {0}', from.name), on: { click: () => this.showSpecies(from.id) } }) : null;
     const title = h('h2', { class: 'place-title', text: formatLatLon(lat, lon) });
     const kmNS = Math.round((box.north - box.south) * 111.3);
     const kmEW = Math.round((box.east - box.west) * 111.3 * Math.cos((((box.south + box.north) / 2) * Math.PI) / 180)); // at the square's middle
     const sub = h('p', { class: 'place-sub', text: formatLatLon(lat, lon) });
-    const area = L(`the outlined square, about ${kmEW} by ${kmNS} km`, `belgilangan taxminan ${kmEW} × ${kmNS} km kvadrat`);
-    const summary = h('p', { class: 'summary', text: L('Finding animals recorded here…', 'Bu yerda qayd etilgan hayvonlar qidirilmoqda…') });
+    const area = tx('the outlined square, about {0} by {1} km', kmEW, kmNS);
+    const summary = h('p', { class: 'summary', text: tx('Finding animals recorded here…') });
     this.body.append(...[nav, h('header', { class: 'place-head' }, title, sub), summary].filter((x): x is HTMLElement => !!x));
     sub.hidden = true;
     api.placeName(lat, lon, this.lang, signal).then((n) => {
@@ -119,12 +120,11 @@ export class Panel {
     });
 
     const tell = (n: number, rec: number) => {
-      summary.textContent = L(`${plural(n, 'species', 'species')} of animals recorded in ${area}, from ${fmt(rec)} records.`,
-        `${area} ichida ${fmt(rec)} ta yozuvdan ${fmt(n)} ta hayvon turi qayd etilgan.`);
+      summary.textContent = tx('{0} of animals recorded in {1}, from {2} records.', plural(n, 'species', 'species'), area, fmt(rec), fmt(n));
     };
     // The all-animals answer comes first: the count shows while the kinds are still sorting.
     const sorting = h('div', { class: 'sorting' },
-      h('p', { class: 'fine', text: L('Sorting them by kind of animal…', 'Hayvon turkumlari boʻyicha saralanmoqda…') }),
+      h('p', { class: 'fine', text: tx('Sorting them by kind of animal…') }),
       h('ul', { class: 'mosaic' }, ...Array.from({ length: 6 }, () => h('li', { class: 'tile-skeleton', attrs: { 'aria-hidden': 'true' } }))));
     const early = (c: api.Checklist) => {
       if (t !== this.token || !c.list.length) return;
@@ -139,33 +139,33 @@ export class Panel {
     } catch (e) {
       if (t !== this.token) return;
       sorting.remove();
-      summary.textContent = L('The species list did not load. GBIF may be busy; try the same spot again in a moment.', 'Turlar roʻyxati yuklanmadi. GBIF band boʻlishi mumkin; birozdan keyin shu joyni qayta bosing.');
+      summary.textContent = tx('The species list did not load. GBIF may be busy; try the same spot again in a moment.');
       summary.classList.add('error');
-      this.body.append(h('button', { class: 'btn', text: L('Try again', 'Qayta urinish'), on: { click: () => this.showPlace(lat, lon) } }));
+      this.body.append(h('button', { class: 'btn', text: tx('Try again'), on: { click: () => this.showPlace(lat, lon) } }));
       console.warn(e);
       return;
     }
     if (t !== this.token) return;
     if (!list.length) {
-      summary.textContent = L('Nobody has recorded an animal in this square yet. Switch on "Where people have looked" to find well-studied ground.', 'Bu kvadratda hali hech kim hayvon qayd etmagan. Yaxshi oʻrganilgan joylarni topish uchun "Odamlar qayerni oʻrgangan" qatlamini yoqing.');
+      summary.textContent = tx('Nobody has recorded an animal in this square yet. Switch on "Where people have looked" to find well-studied ground.');
       return;
     }
     sorting.remove();
     tell(list.length, records);
     const survey = this.body.appendChild(this.surveyBox(list, cut, wkt, signal, t));
-    if (cut.length) survey.before(h('p', { class: 'fine', text: L(`${cut.map((g) => GROUP_LABEL[g]).join(', ')}: more than 3,000 species on record here; the list shows the 3,000 most recorded.`, `${cut.map((g) => GROUP_LABEL[g]).join(', ')}: bu yerda 3 000 dan ortiq tur bor; roʻyxatda eng koʻp qayd etilgan 3 000 tasi.`) }));
-    if (records < FEW_RECORDS) this.body.append(h('p', { class: 'callout', text: L('Few people have looked here. Most of the animals in this square have never been recorded, so this list is only a start.', 'Bu yerni kam odam oʻrgangan. Bu kvadratdagi hayvonlarning katta qismi hech qachon qayd etilmagan, shuning uchun roʻyxat faqat boshlanishi.') }));
+    if (cut.length) survey.before(h('p', { class: 'fine', text: tx('{0}: more than 3,000 species on record here; the list shows the 3,000 most recorded.', cut.map((g) => GROUP_LABEL[g]).join(', ')) }));
+    if (records < FEW_RECORDS) this.body.append(h('p', { class: 'callout', text: tx('Few people have looked here. Most of the animals in this square have never been recorded, so this list is only a start.') }));
 
     const counts = countByGroup(list);
     let mixed = interleaveGroups(list);
     let active: GroupId | 'all' = 'all';
-    const chips = h('div', { class: 'chips', attrs: { role: 'group', 'aria-label': L('Filter by kind of animal', 'Hayvon turkumi boʻyicha saralash') } });
+    const chips = h('div', { class: 'chips', attrs: { role: 'group', 'aria-label': tx('Filter by kind of animal') } });
     const grid = h('ul', { class: 'mosaic' });
-    const more = h('button', { class: 'btn more', text: L('Show more', 'Yana koʻrsatish') });
+    const more = h('button', { class: 'btn more', text: tx('Show more') });
     // find in this list, and threatened only: both narrow whatever the kind chips show
     let query = '', onlyThreat = false, threat: Map<number, string> | null = null, looking = 0;
-    const find = h('input', { class: 'list-find', attrs: { type: 'search', placeholder: L('Find in this list', 'Shu roʻyxatdan qidirish'), 'aria-label': L('Find an animal in this list', 'Shu roʻyxatdan hayvon qidirish'), autocomplete: 'off', spellcheck: 'false' } }) as HTMLInputElement;
-    const threatBtn = h('button', { class: 'chip threat', attrs: { 'aria-pressed': 'false' }, text: L('Threatened only', 'Faqat xavf ostidagilar') });
+    const find = h('input', { class: 'list-find', attrs: { type: 'search', placeholder: tx('Find in this list'), 'aria-label': tx('Find an animal in this list'), autocomplete: 'off', spellcheck: 'false' } }) as HTMLInputElement;
+    const threatBtn = h('button', { class: 'chip threat', attrs: { 'aria-pressed': 'false' }, text: tx('Threatened only') });
     const listNote = h('p', { class: 'fine list-note', attrs: { 'aria-live': 'polite' } });
     const nameOf = (x: Taxon) => { const k = this.known.get(x.key); return `${k?.name ?? ''} ${k?.sci ?? ''}`.toLowerCase(); };
     const base = () => {
@@ -181,7 +181,7 @@ export class Panel {
       const pool = active === 'all' ? list : list.filter((x) => x.group === active);
       const todo = pool.filter((x) => !this.known.has(x.key));
       for (let i = 0; i < todo.length && my === looking && t === this.token; i += 240) {
-        listNote.textContent = L(`Looking up names: ${fmt(Math.min(i + 240, todo.length))} of ${fmt(todo.length)}…`, `Nomlar aniqlanmoqda: ${fmt(Math.min(i + 240, todo.length))} / ${fmt(todo.length)}…`);
+        listNote.textContent = tx('Looking up names: {0} of {1}…', fmt(Math.min(i + 240, todo.length)), fmt(todo.length));
         await this.lookup(todo.slice(i, i + 240), signal).catch(() => {});
         if (my === looking && t === this.token) render();
       }
@@ -196,10 +196,10 @@ export class Panel {
       onlyThreat = !onlyThreat;
       threatBtn.setAttribute('aria-pressed', String(onlyThreat));
       if (onlyThreat && !threat) {
-        listNote.textContent = L('Finding the threatened animals here…', 'Bu yerdagi xavf ostidagi hayvonlar aniqlanmoqda…');
+        listNote.textContent = tx('Finding the threatened animals here…');
         threat = await api.gbifThreatenedIn(wkt, signal).catch(() => null);
         if (t !== this.token) return;
-        if (!threat) { listNote.textContent = L('The Red List did not load; try again.', 'Qizil kitob yuklanmadi; qayta urining.'); onlyThreat = false; threatBtn.setAttribute('aria-pressed', 'false'); return; }
+        if (!threat) { listNote.textContent = tx('The Red List did not load; try again.'); onlyThreat = false; threatBtn.setAttribute('aria-pressed', 'false'); return; }
         for (const [k, c] of threat) this.red.set(k, c);
         listNote.textContent = '';
       }
@@ -207,16 +207,16 @@ export class Panel {
     });
     const render = () => {
       const shown = base();
-      if (onlyThreat && threat) listNote.textContent = L(`${plural(shown.length, 'threatened species', 'threatened species')} (IUCN: critically endangered, endangered or vulnerable).`, `${fmt(shown.length)} ta xavf ostidagi tur (IUCN: yoʻqolish arafasida, yoʻqolib borayotgan yoki zaif).`);
+      if (onlyThreat && threat) listNote.textContent = tx('{0} (IUCN: critically endangered, endangered or vulnerable).', plural(shown.length, 'threatened species', 'threatened species'), fmt(shown.length));
       grid.replaceChildren();
-      if (!shown.length) grid.append(h('li', { class: 'mosaic-empty', text: query ? L('No animal in this list matches. Names are still being looked up for some.', 'Roʻyxatda mos hayvon yoʻq. Baʼzilarining nomi hali aniqlanmoqda.') : L('None here.', 'Bu yerda yoʻq.') }));
+      if (!shown.length) grid.append(h('li', { class: 'mosaic-empty', text: query ? tx('No animal in this list matches. Names are still being looked up for some.') : tx('None here.') }));
       let n = 0;
       const page = () => {
         const slice = shown.slice(n, n + PAGE);
         n += slice.length;
         this.fillTiles(t, grid, slice, signal);
         more.hidden = n >= shown.length;
-        more.textContent = L(`Show more (${fmt(shown.length - n)} left)`, `Yana koʻrsatish (${fmt(shown.length - n)} ta qoldi)`);
+        more.textContent = tx('Show more ({0} left)', fmt(shown.length - n));
       };
       more.onclick = page;
       page();
@@ -231,21 +231,21 @@ export class Panel {
       });
       return b;
     };
-    chips.append(chip('all', L('All', 'Hammasi'), list.length));
+    chips.append(chip('all', tx('All'), list.length));
     for (const g of GROUPS) if (counts.get(g.id)) chips.append(chip(g.id, GROUP_LABEL[g.id], counts.get(g.id)!));
     for (let i = 0; i < 6; i++) grid.append(h('li', { class: 'tile-skeleton', attrs: { 'aria-hidden': 'true' } }));
-    const csv = h('button', { class: 'btn small quiet', text: L('Download the list (CSV)', 'Roʻyxatni yuklab olish (CSV)') });
+    const csv = h('button', { class: 'btn small quiet', text: tx('Download the list (CSV)') });
     csv.addEventListener('click', async () => {
       csv.disabled = true;
       const label = csv.textContent;
       // names for every row: Wikidata in batches of 240, then GBIF itself (background queue) for those it lacks
       for (let i = 0; i < list.length && !signal.aborted; i += 240) {
-        csv.textContent = L(`Preparing names… ${fmt(Math.min(i + 240, list.length))} of ${fmt(list.length)}`, `Nomlar tayyorlanmoqda… ${fmt(Math.min(i + 240, list.length))} / ${fmt(list.length)}`);
+        csv.textContent = tx('Preparing names… {0} of {1}', fmt(Math.min(i + 240, list.length)), fmt(list.length));
         await this.lookup(list.slice(i, i + 240), signal).catch(() => {});
       }
       const nameless = list.filter((x) => !this.known.get(x.key)?.sci).map((x) => x.key);
       for (let i = 0; i < nameless.length && !signal.aborted; i += 8) {
-        csv.textContent = L(`Preparing names… ${fmt(i)} of ${fmt(nameless.length)} from GBIF`, `Nomlar tayyorlanmoqda… GBIF dan ${fmt(i)} / ${fmt(nameless.length)}`);
+        csv.textContent = tx('Preparing names… {0} of {1} from GBIF', fmt(i), fmt(nameless.length));
         await Promise.all(nameless.slice(i, i + 8).map(async (k) => {
           const sp = await api.gbifSpecies(k, signal, true).catch(() => null);
           if (sp) this.known.set(k, { ...(this.known.get(k) ?? {}), sci: sp.canonicalName ?? sp.scientificName });
@@ -259,9 +259,9 @@ export class Panel {
       download(`fauna-${lat.toFixed(2)}_${lon.toFixed(2)}.csv`, toCsv(rows), 'text/csv');
     });
     this.body.append(h('div', { class: 'list-tools' }, find, threatBtn), listNote, chips, grid, more,
-      h('p', { class: 'fine', text: L('The mixed view takes each kind in turn and leads with species that have a photo; insects, spiders and worms take a turn less often, because they would fill the screen. Record counts reflect where people looked and what they looked for, not only what is common.', 'Aralash koʻrinish turkumlarni navbatma-navbat oladi va rasmi bor turlardan boshlaydi; hasharotlar, oʻrgimchaklar va chuvalchanglar ekranni toʻldirib yubormasligi uchun kamroq navbat oladi. Yozuvlar soni nima keng tarqalganini emas, odamlar qayerda va nimani qidirganini ham koʻrsatadi.') }),
+      h('p', { class: 'fine', text: tx('The mixed view takes each kind in turn and leads with species that have a photo; insects, spiders and worms take a turn less often, because they would fill the screen. Record counts reflect where people looked and what they looked for, not only what is common.') }),
       h('div', { class: 'btn-row export' }, csv),
-      h('p', { class: 'fine cite', text: L('Cite: ', 'Iqtibos: ') + `GBIF.org (${new Date().toISOString().slice(0, 10)}) GBIF Occurrence Search, Animalia, ${wkt}, https://www.gbif.org` }));
+      h('p', { class: 'fine cite', text: tx('Cite: ') + `GBIF.org (${new Date().toISOString().slice(0, 10)}) GBIF Occurrence Search, Animalia, ${wkt}, https://www.gbif.org` }));
     more.hidden = true;
 
     const head = mixed.slice(0, PREFETCH);
@@ -285,7 +285,7 @@ export class Panel {
       .filter((x): x is { g: (typeof GROUPS)[number]; c: NonNullable<ReturnType<typeof chao1>> } => !!x.c)
       .sort((a, b) => b.c.observed - a.c.observed).slice(0, 6);
     if (rows.length) {
-      box.append(h('p', { class: 'survey-title', text: L('How well is this ground known?', 'Bu joy qanchalik yaxshi oʻrganilgan?') }));
+      box.append(h('p', { class: 'survey-title', text: tx('How well is this ground known?') }));
       const table = h('ul', { class: 'known' });
       for (const { g, c } of rows) {
         const pct = Math.round(c.completeness * 100), cov = Math.round(c.coverage * 100);
@@ -295,26 +295,23 @@ export class Panel {
         const judged = c.coverage >= 0.9 && !UNDERSAMPLED.has(g.id);
         table.append(h('li', {},
           h('span', { class: 'k-name', text: GROUP_LABEL[g.id] }),
-          h('span', { class: 'meter', attrs: { role: 'img', 'aria-label': judged ? L(`${pct} % of the likely species recorded`, `ehtimoliy turlarning ${pct} % qayd etilgan`) : L('too few records to judge', 'baholash uchun yozuv kam') } },
+          h('span', { class: 'meter', attrs: { role: 'img', 'aria-label': judged ? tx('{0} % of the likely species recorded', pct) : tx('too few records to judge') } },
             h('span', { attrs: { style: `--w:${judged ? pct : 0}%` } })),
           h('span', { class: 'k-text', text: judged
-            ? L(`${fmt(c.observed)} recorded of at least ${fmt(Math.round(c.estimate))} (${fmt(Math.round(c.lower))}–${fmt(Math.round(c.upper))})`,
-              `${fmt(c.observed)} ta qayd etilgan, kamida ${fmt(Math.round(c.estimate))} ta (${fmt(Math.round(c.lower))}–${fmt(Math.round(c.upper))})`)
+            ? tx('{0} recorded of at least {1} ({2}–{3})', fmt(c.observed), fmt(Math.round(c.estimate)), fmt(Math.round(c.lower)), fmt(Math.round(c.upper)))
             : UNDERSAMPLED.has(g.id)
-              ? L(`${fmt(c.observed)} recorded; far more live here than anyone has recorded`, `${fmt(c.observed)} ta qayd etilgan; bu yerda qayd etilganidan ancha koʻp yashaydi`)
-              : L(`${fmt(c.observed)} recorded; too few records to judge (coverage ${cov} %)`, `${fmt(c.observed)} ta qayd etilgan; baholash uchun yozuv kam (qamrov ${cov} %)`) })));
+              ? tx('{0} recorded; far more live here than anyone has recorded', fmt(c.observed))
+              : tx('{0} recorded; too few records to judge (coverage {1} %)', fmt(c.observed), cov) })));
       }
-      box.append(table, h('p', { class: 'fine', text: L(
-        'Per kind of animal: the species recorded and a Chao1 lower bound for how many live here (95 % interval), from how many species were recorded only once or twice. Below 90 % sample coverage the records are too patchy to judge. Records stand in for individuals, so read it as a guide to how well the ground is known, not a count.',
-        'Har bir turkum uchun: qayd etilgan turlar va bu yerda kamida nechta tur yashashining Chao1 quyi chegarasi (95 % oraliq), faqat bir yoki ikki marta qayd etilgan turlar soniga qarab. Qamrov 90 % dan past boʻlsa, yozuvlar baholash uchun juda siyrak. Yozuvlar individlar oʻrnida, shuning uchun buni sanoq emas, joy qanchalik yaxshi oʻrganilgani haqidagi yoʻl-yoʻriq deb oʻqing.') }));
+      box.append(table, h('p', { class: 'fine', text: tx('Per kind of animal: the species recorded and a Chao1 lower bound for how many live here (95 % interval), from how many species were recorded only once or twice. Below 90 % sample coverage the records are too patchy to judge. Records stand in for individuals, so read it as a guide to how well the ground is known, not a count.') }));
     }
     api.gbifFacet({ geometry: wkt }, 'year', 400, signal).then((ys) => {
       if (t !== this.token) return;
       const years = ys.map((y) => Number(y.name)).filter((y) => y >= 1758 && y <= new Date().getUTCFullYear()); // 1758: Linnaeus; 1700 is a placeholder
       if (!years.length) return;
       const first = Math.min(...years), last = Math.max(...years), age = new Date().getUTCFullYear() - last;
-      box.append(h('p', { class: 'fine', text: age > 10 ? L(`Records from ${first} to ${last}: nobody has recorded an animal here for ${age} years.`, `Yozuvlar ${first}–${last} yillar: bu yerda ${age} yildan beri hech kim hayvon qayd etmagan.`)
-        : L(`Records from ${first} to ${last}.`, `Yozuvlar ${first}–${last} yillar.`) }));
+      box.append(h('p', { class: 'fine', text: age > 10 ? tx('Records from {0} to {1}: nobody has recorded an animal here for {2} years.', first, last, age)
+        : tx('Records from {0} to {1}.', first, last) }));
     }).catch(() => {});
     return box;
   }
@@ -351,7 +348,7 @@ export class Panel {
         if (!sp || t !== this.token) return;
         const kn = this.known.get(k) ?? {};
         kn.sci ??= sp.canonicalName ?? sp.scientificName;
-        if (!kn.name && sp.vernacularName && lang !== 'uz') kn.name = capital(sp.vernacularName);
+        if (!kn.name && sp.vernacularName && lang === 'en') kn.name = capital(sp.vernacularName);
         if (!kn.image && !kn.photo) kn.photo = (await api.gbifPhoto(k, signal, true).catch(() => null)) ?? undefined;
         this.known.set(k, kn);
         apply(k);
@@ -367,7 +364,7 @@ export class Panel {
       const photo = h('div', { class: `tile-photo g-${sp.group}`, attrs: { 'data-photo': 'loading' } },
         silhouette(sp.group), h('span', { class: 'tile-group', text: GROUP_LABEL[sp.group] }));
       const btn = h('button', { class: 'tile', attrs: { 'aria-label': GROUP_LABEL[sp.group] } }, photo, name, latin,
-        h('span', { class: 'tile-n', text: count(sp.records, 'record', 'records', 'yozuv') }));
+        h('span', { class: 'tile-n', text: tn(sp.records, '{0} record', '{0} records') }));
       btn.addEventListener('click', () => this.showSpecies(sp.key, true));
       const li = h('li', {}, btn);
       tiles.set(sp.key, li);
@@ -385,7 +382,7 @@ export class Panel {
       const frame = li.querySelector<HTMLElement>('.tile-photo')!;
       if (frame.querySelector('img')) return;
       if (w.image) loadPhoto(frame, commonsThumbs(w.image, 330), '', false).dataset.file = w.image;
-      else if (w.photo) { const img = loadPhoto(frame, [w.photo.url], '', false); img.title = `${L('Photo', 'Surat')}: ${w.photo.credit}, ${w.photo.licence}${w.photo.own ? '' : ', iNaturalist'}`; }
+      else if (w.photo) { const img = loadPhoto(frame, [w.photo.url], '', false); img.title = `${tx('Photo')}: ${w.photo.credit}, ${w.photo.licence}${w.photo.own ? '' : ', iNaturalist'}`; }
     };
     for (const k of tiles.keys()) if (this.known.has(k)) apply(k); // from the site's own index: no wait for Wikidata
     this.lookup(slice, signal).then(() => {
@@ -396,7 +393,7 @@ export class Panel {
         if (t !== this.token) return;
         grid.querySelectorAll<HTMLImageElement>('img[data-file]').forEach((img) => {
           const c = credits.get(img.dataset.file!);
-          if (c) img.title = `${L('Photo', 'Surat')}: ${c.artist}, ${c.licence}, Wikimedia Commons`;
+          if (c) img.title = `${tx('Photo')}: ${c.artist}, ${c.licence}, Wikimedia Commons`;
         });
       });
       const missing = slice.map((s) => s.key).filter((k) => { const w = this.known.get(k); return !w?.sci || (!w?.image && !w?.photo); }); // own-index photos count: no needless GBIF lookups
@@ -413,7 +410,7 @@ export class Panel {
   async showSpecies(id: number, fromPlace = false) {
     const back = fromPlace && this.place ? { ...this.place } : null;
     const { t, signal } = this.open();
-    this.species = { id, name: L('this species', 'bu tur') };
+    this.species = { id, name: tx('this species') };
     this.host.setHash({ at: back ?? undefined, sp: id });
     if (!back) { this.place = null; this.host.showSquare(null); }
     else this.host.showSquare(geohashBounds(geohash(back.lon, back.lat, 3)));
@@ -421,7 +418,7 @@ export class Panel {
     // from a place the camera stays there; otherwise fly to where the records are
     if (!back) api.gbifCentre(id, signal).then((c) => { if (c && t === this.token) this.host.flyTo(c.lon, c.lat, 3); });
 
-    const nav = back ? h('button', { class: 'back', text: L('Back to this place', 'Shu joyga qaytish'), on: { click: () => this.showPlace(back.lat, back.lon) } }) : null;
+    const nav = back ? h('button', { class: 'back', text: tx('Back to this place'), on: { click: () => this.showPlace(back.lat, back.lon) } }) : null;
     const figure = h('figure', { class: 'hero' });
     const name = h('h2', { class: 'sp-name', text: '' });
     const latin = h('p', { class: 'latin big', text: '' });
@@ -434,7 +431,7 @@ export class Panel {
     const tools = h('section', { class: 'tools' });
     const journeys = h('div', { class: 'journeys-mount' });
     const links = h('p', { class: 'links' });
-    const rangeNote = h('p', { class: 'fine', text: L('Coloured squares on the globe: where it has been recorded (GBIF).', 'Globusdagi rangli kvadratchalar: u qayd etilgan joylar (GBIF).') });
+    const rangeNote = h('p', { class: 'fine', text: tx('Coloured squares on the globe: where it has been recorded (GBIF).') });
     status.hidden = true;
     this.body.append(...[nav, figure, name, latin, lineage, status, about, rangeNote, facts, bodyBox, vertical, tools, journeys, links].filter((x): x is HTMLElement => !!x));
     // The well-known animals open at once from the site's own index and photo (milliseconds), while GBIF and Wikidata
@@ -447,8 +444,8 @@ export class Panel {
       latin.textContent = ownK[2];
       if (ownK[3]) {
         const qf = h('div', { class: 'hero-frame' });
-        figure.append(qf, h('figcaption', { text: `${L('Photo', 'Surat')}: ${ownK[3]}, ${ownK[4]}` }));
-        loadPhoto(qf, [`${import.meta.env.BASE_URL}data/photos/${id}.webp`], L(`Photo of ${name.textContent}`, `${name.textContent} surati`), true);
+        figure.append(qf, h('figcaption', { text: `${tx('Photo')}: ${ownK[3]}, ${ownK[4]}` }));
+        loadPhoto(qf, [`${import.meta.env.BASE_URL}data/photos/${id}.webp`], tx('Photo of {0}', name.textContent), true);
         quick = true;
       }
     }
@@ -473,12 +470,12 @@ export class Panel {
       }
     }
     if (!sp) {
-      name.textContent = L('This species did not load', 'Bu tur yuklanmadi');
-      rangeNote.textContent = L('GBIF did not answer; it may be busy for a minute.', 'GBIF javob bermadi; u bir daqiqa band boʻlishi mumkin.');
-      rangeNote.after(h('button', { class: 'btn', text: L('Try again', 'Qayta urinish'), on: { click: () => this.showSpecies(id, fromPlace) } }));
+      name.textContent = tx('This species did not load');
+      rangeNote.textContent = tx('GBIF did not answer; it may be busy for a minute.');
+      rangeNote.after(h('button', { class: 'btn', text: tx('Try again'), on: { click: () => this.showSpecies(id, fromPlace) } }));
       return;
     }
-    if (degraded) rangeNote.after(h('p', { class: 'fine', text: L('GBIF is busy, so some details (family, record counts) are missing; open the species again in a minute for all of them.', 'GBIF band, shuning uchun baʼzi maʼlumotlar (oila, yozuvlar soni) yoʻq; hammasini koʻrish uchun turni bir daqiqadan keyin qayta oching.') }));
+    if (degraded) rangeNote.after(h('p', { class: 'fine', text: tx('GBIF is busy, so some details (family, record counts) are missing; open the species again in a minute for all of them.') }));
     const sci = sp.canonicalName ?? sp.scientificName;
     let wiki: WikiInfo = { ...(info ?? {}) };
     if (!wiki.image) {
@@ -497,14 +494,14 @@ export class Panel {
       if (t !== this.token) return;
     }
     if (wiki.name && wiki.name.toLowerCase() === sci.toLowerCase()) delete wiki.name;
-    const common = wiki.name ?? (lang !== 'uz' && sp.vernacularName ? capital(sp.vernacularName) : undefined);
+    const common = wiki.name ?? (lang === 'en' && sp.vernacularName ? capital(sp.vernacularName) : undefined);
     name.textContent = common ?? sci;
     latin.textContent = sci;
     if (!common) { latin.hidden = true; name.classList.add('latin'); }
     this.species = { id, name: common ?? sci };
     const group = groupOfKeys(sp.classKey, sp.phylumKey, sp.orderKey);
-    lineage.textContent = [GROUP_LABEL[group], sp.family && L(`family ${sp.family}`, `${sp.family} oilasi`), sp.order && L(`order ${sp.order}`, `${sp.order} turkumi`)].filter(Boolean).join(', ');
-    if (red && IUCN_LABEL[red]) { status.hidden = false; status.append(h('span', { class: `iucn iucn-${red}`, text: IUCN_LABEL[red] }), L(' on the IUCN Red List', ' — IUCN Qizil roʻyxatida')); }
+    lineage.textContent = [GROUP_LABEL[group], sp.family && tx('family {0}', sp.family), sp.order && tx('order {0}', sp.order)].filter(Boolean).join(', ');
+    if (red && IUCN_LABEL[red]) { status.hidden = false; status.append(h('span', { class: `iucn iucn-${red}`, text: IUCN_LABEL[red] }), tx(' on the IUCN Red List')); }
 
     const frame = h('div', { class: 'hero-frame' });
     const cap = h('figcaption', { text: '' });
@@ -512,19 +509,19 @@ export class Panel {
     const show = () => figure.replaceChildren(frame, cap);
     if (wiki.image) {
       if (!quick) show();
-      cap.textContent = L('Photo: Wikimedia Commons', 'Surat: Wikimedia Commons');
-      loadPhoto(frame, commonsThumbs(wiki.image, 960), L(`Photo of ${name.textContent}`, `${name.textContent} surati`), true, () => { if (quick && t === this.token) show(); });
+      cap.textContent = tx('Photo: Wikimedia Commons');
+      loadPhoto(frame, commonsThumbs(wiki.image, 960), tx('Photo of {0}', name.textContent), true, () => { if (quick && t === this.token) show(); });
       api.commonsCredits([wiki.image]).then((c) => {
         const cr = c.get(wiki.image!);
-        if (cr && t === this.token) cap.replaceChildren(L('Photo: ', 'Surat: '), h('a', { text: `${cr.artist}, ${cr.licence}`, attrs: { href: cr.page, ...ext } }));
+        if (cr && t === this.token) cap.replaceChildren(tx('Photo: '), h('a', { text: `${cr.artist}, ${cr.licence}`, attrs: { href: cr.page, ...ext } }));
       });
     } else {
       const p = await api.gbifPhoto(id, signal).catch(() => null);
       if (t !== this.token) return;
       if (p) {
         if (!quick) show();
-        loadPhoto(frame, [p.url.replace('/medium.', '/large.'), p.url], L(`Photo of ${name.textContent}`, `${name.textContent} surati`), true, () => { if (quick && t === this.token) show(); });
-        cap.replaceChildren(L('Photo: ', 'Surat: '), h('a', { text: `${p.credit}, ${p.licence}, iNaturalist`, attrs: { href: p.page, ...ext } }));
+        loadPhoto(frame, [p.url.replace('/medium.', '/large.'), p.url], tx('Photo of {0}', name.textContent), true, () => { if (quick && t === this.token) show(); });
+        cap.replaceChildren(tx('Photo: '), h('a', { text: `${p.credit}, ${p.licence}, iNaturalist`, attrs: { href: p.page, ...ext } }));
       } else if (!quick) figure.hidden = true;
     }
 
@@ -533,19 +530,19 @@ export class Panel {
       api.wikipediaSummary(title, wiki.articleLang ?? 'en').then((s) => {
         if (!s || t !== this.token) return;
         const text = h('p', { class: 'extract clamped', text: s.extract, attrs: { lang: s.lang } });
-        const toggle = h('button', { class: 'link-btn', text: L('Read more', 'Batafsil') });
-        toggle.addEventListener('click', () => { const c = text.classList.toggle('clamped'); toggle.textContent = c ? L('Read more', 'Batafsil') : L('Show less', 'Qisqaroq'); });
-        about.append(text, h('p', { class: 'fine' }, toggle, L(' From ', ' Manba: '), h('a', { text: s.lang === 'en' ? 'Wikipedia' : `Wikipedia (${s.lang})`, attrs: { href: s.url, ...ext } }), ', CC BY-SA 4.0'));
+        const toggle = h('button', { class: 'link-btn', text: tx('Read more') });
+        toggle.addEventListener('click', () => { const c = text.classList.toggle('clamped'); toggle.textContent = c ? tx('Read more') : tx('Show less'); });
+        about.append(text, h('p', { class: 'fine' }, toggle, tx(' From '), h('a', { text: s.lang === 'en' ? 'Wikipedia' : `Wikipedia (${s.lang})`, attrs: { href: s.url, ...ext } }), ', CC BY-SA 4.0'));
         requestAnimationFrame(() => { if (text.scrollHeight <= text.clientHeight + 2) toggle.remove(); });
       });
     }
 
     const row = (k: string, v: string) => facts.append(h('dt', { text: k }), h('dd', { text: v }));
-    if (total != null) row(L('Records', 'Yozuvlar'), fmt(total));
+    if (total != null) row(tx('Records'), fmt(total));
     api.gbifFacet({ taxonKey: id }, 'year', 400, signal).then((ys) => {
       if (t !== this.token) return;
       const years = ys.map((y) => Number(y.name)).filter((y) => y >= 1758 && y <= new Date().getUTCFullYear()); // 1758: Linnaeus; 1700 is a placeholder
-      if (years.length) row(L('Recorded', 'Qayd etilgan'), `${Math.min(...years)}–${Math.max(...years)}`);
+      if (years.length) row(tx('Recorded'), `${Math.min(...years)}–${Math.max(...years)}`);
     }).catch(() => {});
 
     api.gbifSynonyms(id, signal).then((syn) => api.wikidataExtras([id, ...syn], signal)).then((x) => { if (t === this.token) this.renderBody(bodyBox, parseTraits(x.rows), x.audio, name.textContent ?? ''); }).catch(() => {});
@@ -569,58 +566,57 @@ export class Panel {
     const r = verticalRange(counts, v.values);
     if (!r) return;
     const max = Math.max(...counts, 1);
-    const where = (v: number) => (v >= 0 ? L(`${fmt(v)} m above sea level`, `dengiz sathidan ${fmt(v)} m yuqori`) : L(`${fmt(-v)} m below the sea surface`, `dengiz sathidan ${fmt(-v)} m pastda`));
-    box.append(h('h3', { text: L('From the deep sea to the mountains', 'Dengiz tubidan togʻ choʻqqisigacha') }),
-      h('p', { text: L(`Usually between ${where(r.from)} and ${where(r.to)}: the middle half of ${plural(r.records, 'record')} with a height or a depth.`,
-        `Odatda ${where(r.from)} va ${where(r.to)} oraligʻida: balandligi yoki chuqurligi yozilgan ${fmt(r.records)} ta yozuvning oʻrta yarmi.`) }));
-    const col = h('ol', { class: 'column vertical', attrs: { 'aria-label': L('Records by height and depth', 'Balandlik va chuqurlik boʻyicha yozuvlar') } });
+    const where = (v: number) => (v >= 0 ? tx('{0} m above sea level', fmt(v)) : tx('{0} m below the sea surface', fmt(-v)));
+    box.append(h('h3', { text: tx('From the deep sea to the mountains') }),
+      h('p', { text: tx('Usually between {0} and {1}: the middle half of {2} with a height or a depth.', where(r.from), where(r.to), plural(r.records, 'record'), fmt(r.records)) }));
+    const col = h('ol', { class: 'column vertical', attrs: { 'aria-label': tx('Records by height and depth') } });
     ZONES.forEach((z, i) => {
       const usual = r.from < z.to && r.to > z.from;
       col.append(h('li', { class: `${usual ? 'usual ' : ''}${z.param === 'depth' ? 'sea' : 'land'}` },
-        h('span', { class: 'band', text: L(z.en, z.uz) }),
+        h('span', { class: 'band', text: tx(z.en) }),
         h('span', { class: 'bar', attrs: { style: `--w:${(counts[i] / max) * 100}%` } }),
         h('span', { class: 'band-n', text: fmt(counts[i]) })));
     });
-    box.append(col, h('p', { class: 'fine', text: L('Only some records give a height or a depth, and a height is often the ground under a bird in flight.', 'Faqat baʼzi yozuvlarda balandlik yoki chuqurlik bor, balandlik esa koʻpincha uchayotgan qush ostidagi yer balandligi.') }));
+    box.append(col, h('p', { class: 'fine', text: tx('Only some records give a height or a depth, and a height is often the ground under a bird in flight.') }));
   }
 
   /** Body size, lifespan and a sound, from Wikidata. */
   private renderBody(box: HTMLElement, tr: Traits, audio: string | undefined, who: string) {
     const parts: string[] = [];
-    if (tr.lengthM) parts.push(L(`up to ${formatLength(tr.lengthM)} long`, `uzunligi ${formatLength(tr.lengthM)} gacha`));
-    if (tr.massKg) parts.push(L(`up to ${formatMass(tr.massKg)}`, `vazni ${formatMass(tr.massKg)} gacha`));
-    if (tr.lifeYears) parts.push(L(`lives up to ${formatLife(tr.lifeYears, 'en')}`, `${formatLife(tr.lifeYears, 'uz')} gacha yashaydi`));
+    if (tr.lengthM) parts.push(tx('up to {0} long', formatLength(tr.lengthM)));
+    if (tr.massKg) parts.push(tx('up to {0}', formatMass(tr.massKg)));
+    if (tr.lifeYears) parts.push(tx('lives up to {0}', formatLife(tr.lifeYears)));
     if (!parts.length && !audio) return;
     box.hidden = false;
-    box.append(h('h3', { text: L('Size and voice', 'Oʻlchami va ovozi') }));
+    box.append(h('h3', { text: tx('Size and voice') }));
     if (parts.length) box.append(h('p', { text: `${capital(parts.join(', '))}.` }));
     if (tr.lengthM && tr.lengthM >= 0.02 && tr.lengthM <= 40) {
       const human = 1.7, max = Math.max(human, tr.lengthM);
       box.append(h('div', { class: 'scale', attrs: { 'aria-hidden': 'true' } },
         h('div', { class: 'scale-row' }, h('span', { class: 'scale-bar animal', attrs: { style: `--w:${(tr.lengthM / max) * 100}%` } }), h('span', { class: 'scale-label', text: who })),
-        h('div', { class: 'scale-row' }, h('span', { class: 'scale-bar human', attrs: { style: `--w:${(human / max) * 100}%` } }), h('span', { class: 'scale-label', text: L('a person, 1.7 m', 'odam, 1,7 m') }))));
+        h('div', { class: 'scale-row' }, h('span', { class: 'scale-bar human', attrs: { style: `--w:${(human / max) * 100}%` } }), h('span', { class: 'scale-label', text: tx('a person, 1.7 m') }))));
     }
     if (audio) {
       const el = h('audio', { attrs: { controls: true, preload: 'none' } });
       for (const s of commonsAudio(audio)) el.append(h('source', { attrs: { src: s.src, type: s.type } }));
-      const cap = h('p', { class: 'fine', text: L('Recording: Wikimedia Commons', 'Yozuv: Wikimedia Commons') });
+      const cap = h('p', { class: 'fine', text: tx('Recording: Wikimedia Commons') });
       box.append(h('div', { class: 'listen' }, el), cap);
       api.commonsCredits([audio]).then((c) => {
         const cr = c.get(audio);
-        if (cr) cap.replaceChildren(L('Recording: ', 'Yozuv: '), h('a', { text: `${cr.artist}, ${cr.licence}`, attrs: { href: cr.page, ...ext } }));
+        if (cr) cap.replaceChildren(tx('Recording: '), h('a', { text: `${cr.artist}, ${cr.licence}`, attrs: { href: cr.page, ...ext } }));
       });
     }
-    box.append(h('p', { class: 'fine', text: L('Size and lifespan: the largest values on Wikidata, which may be records rather than typical adults.', 'Oʻlcham va umr: Wikidata dagi eng katta qiymatlar; ular odatiy katta yoshli emas, rekord boʻlishi mumkin.') }));
+    box.append(h('p', { class: 'fine', text: tx('Size and lifespan: the largest values on Wikidata, which may be records rather than typical adults.') }));
   }
 
   /** Then and now, compare and cite. */
   private renderTools(box: HTMLElement, id: number, sci: string, who: string, signal: AbortSignal, t: number) {
-    const shiftBtn = h('button', { class: 'btn small quiet', text: L('Then and now', 'Oldin va hozir'), attrs: { 'aria-pressed': 'false' } });
-    const cmpBtn = h('button', { class: 'btn small quiet', text: L('Compare with another species', 'Boshqa tur bilan solishtirish') });
+    const shiftBtn = h('button', { class: 'btn small quiet', text: tx('Then and now'), attrs: { 'aria-pressed': 'false' } });
+    const cmpBtn = h('button', { class: 'btn small quiet', text: tx('Compare with another species') });
     const out = h('div', { class: 'shift-out' });
     box.append(h('div', { class: 'btn-row' }, shiftBtn, cmpBtn), out,
-      h('p', { class: 'fine cite', text: L('Cite: ', 'Iqtibos: ') + `GBIF.org (${new Date().toISOString().slice(0, 10)}) ${sci}, GBIF Backbone Taxonomy key ${id}, occurrences via https://www.gbif.org/species/${id}` }));
-    cmpBtn.addEventListener('click', () => { this.comparingFrom = id; this.host.focusSearch(L(`Compare ${who} with…`, `${who} ni qaysi tur bilan solishtirish…`)); });
+      h('p', { class: 'fine cite', text: tx('Cite: ') + `GBIF.org (${new Date().toISOString().slice(0, 10)}) ${sci}, GBIF Backbone Taxonomy key ${id}, occurrences via https://www.gbif.org/species/${id}` }));
+    cmpBtn.addEventListener('click', () => { this.comparingFrom = id; this.host.focusSearch(tx('Compare {0} with…', who)); });
     let on = false;
     shiftBtn.addEventListener('click', async () => {
       on = !on;
@@ -628,13 +624,13 @@ export class Panel {
       if (!on) { this.host.showRanges([{ key: id, mode: 'all' }]); out.replaceChildren(); return; }
       this.host.showRanges([{ key: id, mode: 'then' }, { key: id, mode: 'now' }]);
       out.replaceChildren(
-        h('ul', { class: 'legend-dots' }, h('li', {}, h('span', { class: 'dot', attrs: { style: 'background:#b39ddb' } }), L('before 2000', '2000 gacha')),
-          h('li', {}, h('span', { class: 'dot', attrs: { style: 'background:#f2c94c' } }), L('since 2000', '2000 dan keyin'))),
-        h('p', { class: 'fine', text: L('Loading the counts…', 'Sanoqlar yuklanmoqda…') }));
+        h('ul', { class: 'legend-dots' }, h('li', {}, h('span', { class: 'dot', attrs: { style: 'background:#b39ddb' } }), tx('before 2000')),
+          h('li', {}, h('span', { class: 'dot', attrs: { style: 'background:#f2c94c' } }), tx('since 2000'))),
+        h('p', { class: 'fine', text: tx('Loading the counts…') }));
       const [a, b] = await Promise.all([api.gbifCount({ taxonKey: id, year: '1758,1999' }, signal).catch(() => 0), api.gbifCount({ taxonKey: id, year: `2000,${new Date().getUTCFullYear()}` }, signal).catch(() => 0)]);
       if (t !== this.token || !on) return;
-      out.lastElementChild!.replaceWith(h('p', { text: L(`${fmt(a)} records before 2000, ${fmt(b)} since 2000.`, `2000 gacha ${fmt(a)} ta, 2000 dan keyin ${fmt(b)} ta yozuv.`) }),
-        h('p', { class: 'fine', text: L('Where people looked changed even more than where animals live: phone apps such as iNaturalist and eBird made records since 2000, and above all since 2010, far more common and far more urban. A place that appears only recently was usually first looked at recently.', 'Odamlar qayerga qaragani hayvonlar yashash joyidan ham koʻproq oʻzgargan: iNaturalist va eBird kabi ilovalar 2010 dan keyingi yozuvlarni ancha koʻpaytirdi va shaharlarga yaqinlashtirdi. Faqat yaqinda paydo boʻlgan joyga odatda yaqinda birinchi marta qaralgan.') }));
+      out.lastElementChild!.replaceWith(h('p', { text: tx('{0} records before 2000, {1} since 2000.', fmt(a), fmt(b)) }),
+        h('p', { class: 'fine', text: tx('Where people looked changed even more than where animals live: phone apps such as iNaturalist and eBird made records since 2000, and above all since 2010, far more common and far more urban. A place that appears only recently was usually first looked at recently.') }));
     });
   }
 
@@ -647,9 +643,9 @@ export class Panel {
     this.host.setHash({ sp: a, vs: b });
     this.host.showSquare(null);
     this.host.showRanges([{ key: a, mode: 'a' }, { key: b, mode: 'b' }]);
-    const table = h('div', { class: 'compare' }, h('p', { class: 'fine', text: L('Loading both species…', 'Ikkala tur yuklanmoqda…') }));
-    this.body.append(h('button', { class: 'back', text: L('Back to the first species', 'Birinchi turga qaytish'), on: { click: () => this.showSpecies(a) } }),
-      h('h2', { class: 'place-title', text: L('Side by side', 'Yonma-yon') }), table);
+    const table = h('div', { class: 'compare' }, h('p', { class: 'fine', text: tx('Loading both species…') }));
+    this.body.append(h('button', { class: 'back', text: tx('Back to the first species'), on: { click: () => this.showSpecies(a) } }),
+      h('h2', { class: 'place-title', text: tx('Side by side') }), table);
     const load = async (id: number) => {
       const [sp, total, red, info, zones] = await Promise.all([
         api.gbifSpecies(id, signal).catch(() => null), api.gbifCount({ taxonKey: id }, signal).catch(() => 0), api.gbifRedList(id, signal),
@@ -668,9 +664,9 @@ export class Panel {
     };
     const [A, B] = await Promise.all([load(a), load(b)]);
     if (t !== this.token) return;
-    if (!A.sp || !B.sp) { table.replaceChildren(h('p', { class: 'fine', text: L('One of the species did not load. Try again in a moment.', 'Turlardan biri yuklanmadi. Birozdan keyin qayta urinib koʻring.') })); return; }
+    if (!A.sp || !B.sp) { table.replaceChildren(h('p', { class: 'fine', text: tx('One of the species did not load. Try again in a moment.') })); return; }
     const sciOf = (x: typeof A) => x.sp!.canonicalName ?? x.sp!.scientificName;
-    const nm = (x: typeof A) => x.info.name ?? (lang !== 'uz' && x.sp!.vernacularName ? capital(x.sp!.vernacularName) : sciOf(x));
+    const nm = (x: typeof A) => x.info.name ?? (lang === 'en' && x.sp!.vernacularName ? capital(x.sp!.vernacularName) : sciOf(x));
     const vr = (x: typeof A) => { const r = verticalRange(x.zones.zones, x.zones.values); return r ? `${fmt(r.from)} … ${fmt(r.to)} m` : '—'; };
     const photo = (x: typeof A) => {
       const g = groupOfKeys(x.sp!.classKey, x.sp!.phylumKey, x.sp!.orderKey);
@@ -682,37 +678,36 @@ export class Panel {
     table.replaceChildren(
       h('div', { class: 'ck' }), h('button', { class: 'cmp-head a', on: { click: () => this.showSpecies(a) } }, photo(A), h('strong', { text: nm(A) }), h('span', { class: 'latin', text: sciOf(A) })),
       h('button', { class: 'cmp-head b', on: { click: () => this.showSpecies(b) } }, photo(B), h('strong', { text: nm(B) }), h('span', { class: 'latin', text: sciOf(B) })),
-      ...row(L('Kind', 'Turkum'), GROUP_LABEL[groupOfKeys(A.sp.classKey, A.sp.phylumKey, A.sp.orderKey)], GROUP_LABEL[groupOfKeys(B.sp.classKey, B.sp.phylumKey, B.sp.orderKey)]),
-      ...row(L('Red List', 'Qizil kitob'), A.red ? IUCN_LABEL[A.red] ?? '—' : '—', B.red ? IUCN_LABEL[B.red] ?? '—' : '—'),
-      ...row(L('Records', 'Yozuvlar'), fmt(A.total), fmt(B.total)),
-      ...row(L('Usually at', 'Odatda'), vr(A), vr(B)));
+      ...row(tx('Kind'), GROUP_LABEL[groupOfKeys(A.sp.classKey, A.sp.phylumKey, A.sp.orderKey)], GROUP_LABEL[groupOfKeys(B.sp.classKey, B.sp.phylumKey, B.sp.orderKey)]),
+      ...row(tx('Red List'), A.red ? IUCN_LABEL[A.red] ?? '—' : '—', B.red ? IUCN_LABEL[B.red] ?? '—' : '—'),
+      ...row(tx('Records'), fmt(A.total), fmt(B.total)),
+      ...row(tx('Usually at'), vr(A), vr(B)));
     this.body.append(h('ul', { class: 'legend-dots' }, h('li', {}, h('span', { class: 'dot', attrs: { style: 'background:#f2c94c' } }), nm(A)),
       h('li', {}, h('span', { class: 'dot', attrs: { style: 'background:#8ecbff' } }), nm(B))),
-      h('p', { class: 'fine', text: L('Heights are above sea level, depths below it (negative).', 'Balandlik dengiz sathidan yuqori, chuqurlik undan past (manfiy).') }));
+      h('p', { class: 'fine', text: tx('Heights are above sea level, depths below it (negative).') }));
 
     // where both are recorded: GBIF's density squares read as presence on one grid, the shared cells drawn white
-    const both = h('section', { class: 'overlap-box' }, h('h3', { text: L('Where both are recorded', 'Ikkalasi ham qayd etilgan joylar') }), h('p', { class: 'fine', text: L('Measuring…', 'Oʻlchanmoqda…') }));
+    const both = h('section', { class: 'overlap-box' }, h('h3', { text: tx('Where both are recorded') }), h('p', { class: 'fine', text: tx('Measuring…') }));
     this.body.append(both);
     const [ca, cb] = await Promise.all([api.presenceCells(a, signal).catch(() => null), api.presenceCells(b, signal).catch(() => null)]);
     if (t !== this.token) return;
-    if (!ca || !cb) { both.lastElementChild!.textContent = L('The range maps did not load; try again in a moment.', 'Tarqalish xaritalari yuklanmadi; birozdan keyin qayta urinib koʻring.'); return; }
+    if (!ca || !cb) { both.lastElementChild!.textContent = tx('The range maps did not load; try again in a moment.'); return; }
     const o = rangeOverlap(ca, cb);
     const keyOf = (c: { bbox: BBox }) => `${c.bbox.west.toFixed(3)},${c.bbox.south.toFixed(3)}`;
     const inB = new Set(cb.map(keyOf));
     const sharedCells = ca.filter((c) => inB.has(keyOf(c)));
     this.host.showOverlap({ type: 'FeatureCollection', features: sharedCells.map((c) => ({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[[c.bbox.west, c.bbox.south], [c.bbox.east, c.bbox.south], [c.bbox.east, c.bbox.north], [c.bbox.west, c.bbox.north], [c.bbox.west, c.bbox.south]]] } })) });
-    const km = (x: number) => (x >= 1e6 ? L(`${(x / 1e6).toFixed(1)} million km²`, `${(x / 1e6).toFixed(1)} mln km²`) : `${fmt(Math.round(x / 1000) * 1000)} km²`);
+    const km = (x: number) => (x >= 1e6 ? tx('{0} million km²', (x / 1e6).toFixed(1)) : `${fmt(Math.round(x / 1000) * 1000)} km²`);
     const bar = (v: number, cls: string) => h('span', { class: `ov-bar ${cls}`, attrs: { style: `--w:${Math.max(1, (100 * v) / Math.max(o.aKm2, o.bKm2, 1)).toFixed(1)}%` } });
     both.replaceChildren(both.firstElementChild!,
       h('ul', { class: 'ov-rows' },
         h('li', {}, h('span', { text: nm(A) }), bar(o.aKm2, 'a'), h('b', { text: km(o.aKm2) })),
         h('li', {}, h('span', { text: nm(B) }), bar(o.bKm2, 'b'), h('b', { text: km(o.bKm2) })),
-        h('li', {}, h('span', { text: L('Both', 'Ikkalasi') }), bar(o.sharedKm2, 'both'), h('b', { text: km(o.sharedKm2) }))),
+        h('li', {}, h('span', { text: tx('Both') }), bar(o.sharedKm2, 'both'), h('b', { text: km(o.sharedKm2) }))),
       h('p', { text: o.sharedKm2
-        ? L(`They share ${Math.round(o.jaccard * 100)} % of the ground either has been recorded on (white on the globe).`, `Ular biri qayd etilgan hududning ${Math.round(o.jaccard * 100)} % ini boʻlishadi (globusda oq).`)
-        : L('No ground where both have been recorded.', 'Ikkalasi ham qayd etilgan hudud yoʻq.') }),
-      h('p', { class: 'fine', text: L('Cells of about 156 km at the equator (smaller towards the poles) where at least one record falls; a record in a cell does not mean the whole cell is used. Overlap of records, not of true ranges.',
-        'Ekvatorda taxminan 156 km lik kataklar (qutblarga tomon kichrayadi), kamida bitta yozuv tushgan; katakda yozuv borligi butun katakdan foydalanilishini bildirmaydi. Haqiqiy tarqalish emas, yozuvlarning kesishishi.') }));
+        ? tx('They share {0} % of the ground either has been recorded on (white on the globe).', Math.round(o.jaccard * 100))
+        : tx('No ground where both have been recorded.') }),
+      h('p', { class: 'fine', text: tx('Cells of about 156 km at the equator (smaller towards the poles) where at least one record falls; a record in a cell does not mean the whole cell is used. Overlap of records, not of true ranges.') }));
   }
 }
 

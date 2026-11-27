@@ -8,7 +8,7 @@ import { bboxRing, frameOf, type BBox } from './geo';
 import { gbifAdhocTiles, gbifTiles } from './api';
 import { capped, fadePolarOverlays, registerPoleCaps } from './polecap';
 import { h, fmt, plural } from './dom';
-import { L } from './i18n';
+import { t } from './i18n';
 
 const GIBS = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/BlueMarble_ShadedRelief_Bathymetry/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpeg';
 /** OpenStreetMap vector tiles (OpenMapTiles schema) for borders and names only; the imagery stays NASA's. */
@@ -157,12 +157,12 @@ function popupContent(layer: string, p: Record<string, unknown>): HTMLElement | 
   }
   if (layer === 'mico-sites') {
     const n = Number(p.n) || 0;
-    return h('div', { class: 'pop' }, h('strong', { text: s('act').replace(/;/g, ', ') || L('Seen here', 'Shu yerda koʻrilgan') }),
-      h('span', { text: `${s('species')}${n ? L(`, ${plural(n, 'animal')} in the studies behind this place`, `, bu joy ortidagi tadqiqotlarda ${fmt(n)} ta hayvon`) : ''}` }));
+    return h('div', { class: 'pop' }, h('strong', { text: s('act').replace(/;/g, ', ') || t('Seen here') }),
+      h('span', { text: `${s('species')}${n ? t(', {0} in the studies behind this place', plural(n, 'animal'), fmt(n)) : ''}` }));
   }
   if (layer === 'mico-routes' || layer === 'mico-links') {
-    return h('div', { class: 'pop' }, h('strong', { text: Number(p.tracked) ? L('Places linked by tagged animals', 'Belgilangan hayvonlar bogʻlagan joylar') : L('Places linked by other studies', 'Boshqa tadqiqotlar bogʻlagan joylar') }),
-      h('span', { text: `${s('species')}${Number(p.both) ? L(', both ways', ', ikki tomonga') : ''}. ${L('The line joins the two places, not the path taken.', 'Chiziq yoʻlni emas, ikki joyni bogʻlaydi.')}` }));
+    return h('div', { class: 'pop' }, h('strong', { text: Number(p.tracked) ? t('Places linked by tagged animals') : t('Places linked by other studies') }),
+      h('span', { text: `${s('species')}${Number(p.both) ? t(', both ways') : ''}. ${t('The line joins the two places, not the path taken.')}` }));
   }
   return null;
 }

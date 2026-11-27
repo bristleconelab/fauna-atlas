@@ -70,11 +70,10 @@ describe('csv', () => {
 describe('formatLife', () => {
   it('gives short lives in months, never "0 years"', async () => {
     const { formatLife } = await import('../src/science');
-    expect(formatLife(0.25, 'en')).toBe('3 months');
-    expect(formatLife(0.02, 'en')).toBe('1 month');
-    expect(formatLife(1.2, 'en')).toBe('1 year');
-    expect(formatLife(47.5, 'en')).toBe('48 years');
-    expect(formatLife(0.5, 'uz')).toBe('6 oy');
+    expect(formatLife(0.25)).toBe('3 months');
+    expect(formatLife(0.02)).toBe('1 month');
+    expect(formatLife(1.2)).toBe('1 year');
+    expect(formatLife(47.5)).toBe('48 years');
   });
 });
 

@@ -119,3 +119,14 @@ describe('polar overlay fade', () => {
     expect(fadePolarOverlays('https://tiles.openfreemap.org/x', 'Tile')).toBeUndefined();
   });
 });
+
+describe('species name from Wikidata', () => {
+  it('prefers the English Wikipedia title to a random English common name', async () => {
+    const { pickName } = await import('../src/wiki');
+    const v = (x: string) => ({ value: x });
+    expect(pickName({ labelEn: v('Danaus plexippus'), articleEn: v('https://en.wikipedia.org/wiki/Monarch_butterfly'), commonEn: v('Common tiger wanderer') }, 'Danaus plexippus')).toBe('Monarch butterfly');
+    expect(pickName({ label: v('Danaus plexippus'), common: v('Common tiger wanderer'), articleEn: v('https://en.wikipedia.org/wiki/Monarch_butterfly') }, 'Danaus plexippus', 'en')).toBe('Monarch butterfly');
+    expect(pickName({ label: v('Ilvirs'), labelEn: v('snow leopard') }, 'Panthera uncia')).toBe('Ilvirs');
+    expect(pickName({ articleEn: v('https://en.wikipedia.org/wiki/Brant_(goose)') }, 'Branta bernicla')).toBe('Brant');
+  });
+});

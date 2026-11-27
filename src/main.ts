@@ -10,23 +10,38 @@ import { Panel } from './panel';
 import { initSearch } from './search';
 import { initSheet } from './sheet';
 import { formatHash, parseHash, type ViewState } from './state';
-import { L, lang, setLang } from './i18n';
+import { languageName, LANGS, lang, setLang, t, tn } from './i18n';
 import { initTour } from './tour';
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const base = import.meta.env.BASE_URL;
-// static text in index.html carries its Uzbek in data-uz (text), data-uz-placeholder and data-uz-label (aria-label)
-if (lang === 'uz') {
-  document.documentElement.lang = 'uz';
-  document.title = 'Fauna Atlas: bu yerda qaysi hayvonlar yashaydi?';
-  document.querySelectorAll<HTMLElement>('[data-uz]').forEach((el) => { el.textContent = el.dataset.uz!; });
-  document.querySelectorAll<HTMLInputElement>('[data-uz-placeholder]').forEach((el) => { el.placeholder = el.dataset.uzPlaceholder!; });
-  document.querySelectorAll<HTMLElement>('[data-uz-label]').forEach((el) => el.setAttribute('aria-label', el.dataset.uzLabel!));
+// Static text in index.html is English; elements marked data-t (text), data-t-placeholder and data-t-label
+// (aria-label) are translated from the catalog. The About text is one block per language (data-l), English as fallback.
+document.documentElement.lang = lang;
+document.title = t('Fauna Atlas: which animals live here?');
+document.querySelectorAll<HTMLElement>('[data-t]').forEach((el) => { el.textContent = t(el.textContent!.trim()); });
+document.querySelectorAll<HTMLInputElement>('[data-t-placeholder]').forEach((el) => { el.dataset.placeholder = el.placeholder; el.placeholder = t(el.placeholder); });
+document.querySelectorAll<HTMLElement>('[data-t-label]').forEach((el) => el.setAttribute('aria-label', t(el.getAttribute('aria-label')!)));
+{
+  const blocks = document.querySelectorAll<HTMLElement>('#about [data-l]');
+  const mine = [...blocks].some((b) => b.dataset.l === lang) ? lang : 'en';
+  blocks.forEach((b) => { b.hidden = b.dataset.l !== mine; });
 }
-document.querySelectorAll<HTMLButtonElement>('.lang-switch button').forEach((b) => {
-  b.setAttribute('aria-pressed', String(b.dataset.lang === lang));
-  b.addEventListener('click', () => { if (b.dataset.lang !== lang) setLang(b.dataset.lang as 'en' | 'uz'); });
-});
+
+// Language: one small button with the current code; the menu lists every language the site has, each in its own name
+{
+  const box = $('.lang-switch'), btn = box.querySelector<HTMLButtonElement>('.lang-btn')!, menu = box.querySelector<HTMLElement>('.lang-menu')!;
+  btn.querySelector('.lang-code')!.textContent = lang.toUpperCase();
+  for (const code of LANGS) {
+    const item = h('button', { attrs: { role: 'menuitemradio', 'aria-checked': String(code === lang), lang: code } }, h('span', { text: languageName(code) }), h('span', { class: 'lang-c', text: code.toUpperCase() }));
+    item.addEventListener('click', () => { if (code !== lang) setLang(code); });
+    menu.append(item);
+  }
+  const open = (o: boolean) => { menu.hidden = !o; btn.setAttribute('aria-expanded', String(o)); };
+  btn.addEventListener('click', (e) => { e.stopPropagation(); open(btn.getAttribute('aria-expanded') !== 'true'); });
+  document.addEventListener('click', (e) => { if (!menu.hidden && !box.contains(e.target as Node)) open(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') open(false); });
+}
 
 const globe = new Globe($('#map'), api.readerLanguage());
 const hint = $('#hint');
@@ -110,19 +125,19 @@ const nearLbl = nearBtn.querySelector<HTMLElement>('.lbl')!; // the icon stays; 
 if (!('geolocation' in navigator)) nearBtn.hidden = true;
 nearBtn.addEventListener('click', () => {
   nearBtn.disabled = true;
-  nearLbl.textContent = L('Finding you…', 'Joylashuv aniqlanmoqda…');
+  nearLbl.textContent = t('Finding you…');
   navigator.geolocation.getCurrentPosition((pos) => {
-    nearBtn.disabled = false; nearLbl.textContent = L('Near me', 'Yonimda');
+    nearBtn.disabled = false; nearLbl.textContent = t('Near me');
     const { latitude: lat, longitude: lon } = pos.coords;
     hint.hidden = true;
     globe.flyTo(lon, lat, 4);
     panel.showPlace(lat, lon);
   }, (err) => {
-    nearBtn.disabled = false; nearLbl.textContent = L('Near me', 'Yonimda');
+    nearBtn.disabled = false; nearLbl.textContent = t('Near me');
     hint.hidden = false;
     hint.textContent = err.code === err.PERMISSION_DENIED
-      ? L('Location is switched off for this site. Allow it in the browser, or click the globe near you.', 'Bu sayt uchun joylashuv oʻchirilgan. Brauzerda ruxsat bering yoki globusda yaqiningizdagi joyni bosing.')
-      : L('Your location did not come through. Click the globe near you instead.', 'Joylashuvingiz aniqlanmadi. Oʻrniga globusda yaqiningizdagi joyni bosing.');
+      ? t('Location is switched off for this site. Allow it in the browser, or click the globe near you.')
+      : t('Your location did not come through. Click the globe near you instead.');
   }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 });
 });
 
@@ -139,11 +154,10 @@ const setLooked = async (on: boolean | 'age') => {
     await globe.setLooked(!!on, on === 'age' ? 'age' : 'records');
     if (on && !lookedTotal) {
       lookedTotal = await api.gbifCount({}).catch(() => 0);
-      if (lookedTotal) $('#legend-note').textContent = L(`${fmt(lookedTotal)} GBIF records of animals with a clean position, live from GBIF. Where you see the plain globe, nobody has recorded an animal.`,
-        `Joylashuvi toza ${fmt(lookedTotal)} ta hayvon yozuvi, GBIF dan jonli. Oddiy globus koʻringan joyda hech kim hayvon qayd etmagan.`);
+      if (lookedTotal) $('#legend-note').textContent = t('{0} GBIF records of animals with a clean position, live from GBIF. Where you see the plain globe, nobody has recorded an animal.', fmt(lookedTotal));
     }
   } catch (e) {
-    $('#legend-note').textContent = L('This layer did not load. Reload the page to try again.', 'Bu qatlam yuklanmadi. Sahifani qayta yuklang.');
+    $('#legend-note').textContent = t('This layer did not load. Reload the page to try again.');
     console.warn(e);
   }
   setHash(parseHash(location.hash), true);
@@ -163,9 +177,7 @@ const tour = initTour($('#tour'), {
 $('#tour-open').addEventListener('click', () => { hint.hidden = true; tour.start(1); });
 
 // Migrations: the species with a MiCO network, by kind of animal, most connected first
-const GROUP_NAME: Record<string, string> = lang === 'uz'
-  ? { seaturtle: 'Dengiz toshbaqalari', mammal: 'Dengiz sutemizuvchilari', bird: 'Dengiz qushlari', fish: 'Baliqlar va akulalar' }
-  : { seaturtle: 'Sea turtles', mammal: 'Sea mammals', bird: 'Seabirds', fish: 'Fish and sharks' };
+const GROUP_NAME: Record<string, string> = Object.fromEntries(Object.entries({ seaturtle: 'Sea turtles', mammal: 'Sea mammals', bird: 'Seabirds', fish: 'Fish and sharks' }).map(([k, v]) => [k, t(v)]));
 // The night sky behind the globe: a fixed field of faint stars (seeded, so it is the same on every visit).
 (() => {
   const W = 1400, H = 900, c = document.createElement('canvas');
@@ -212,15 +224,15 @@ $('#migrations-open').addEventListener('click', async () => {
         const b = h('button', { class: 'mig', attrs: { 'data-q': `${sp.common} ${sp.scientific}`.toLowerCase(), 'data-sci': sp.scientific.toLowerCase(), 'data-name': sp.scientific } },
           h('span', { class: 'mig-thumb', attrs: { 'aria-hidden': 'true' } }),
           h('span', { class: 'mig-name', text: sp.common }), h('span', { class: 'latin', text: sp.scientific }),
-          h('span', { class: 'mig-n', text: sp.routes ? L(`${plural(sp.sites, 'place')}, ${plural(sp.routes, 'link')}`, `${fmt(sp.sites)} ta joy, ${fmt(sp.routes)} ta bogʻlanish`) : L(plural(sp.sites, 'place'), `${fmt(sp.sites)} ta joy`) }));
+          h('span', { class: 'mig-n', text: sp.routes ? t('{0}, {1}', plural(sp.sites, 'place'), plural(sp.routes, 'link'), fmt(sp.sites), fmt(sp.routes)) : tn(sp.sites, '{0} place', '{0} places') }));
         void id;
         b.addEventListener('click', async () => {
           const note = b.querySelector<HTMLElement>('.mig-n')!, was = note.textContent;
-          note.textContent = L('Opening…', 'Ochilmoqda…');
+          note.textContent = t('Opening…');
           // MiCO names follow WoRMS: an exact GBIF match first, then GBIF's own search for the name
           const key = await api.gbifMatch(sp.scientific).catch(() => null)
             ?? (await api.gbifSearch(sp.scientific).catch(() => []))[0]?.key ?? null;
-          if (!key) { note.textContent = L('Not found in GBIF under this name', 'GBIF da bu nom bilan topilmadi'); setTimeout(() => { note.textContent = was; }, 4000); return; }
+          if (!key) { note.textContent = t('Not found in GBIF under this name'); setTimeout(() => { note.textContent = was; }, 4000); return; }
           note.textContent = was;
           migrations.close(); hint.hidden = true;
           panel.showSpecies(key);
@@ -243,18 +255,18 @@ $('#migrations-open').addEventListener('click', async () => {
     const rest: HTMLElement[] = [];
     list.querySelectorAll<HTMLElement>('.mig').forEach((b) => {
       const sci = b.dataset.sci!, key = byName.get(sci), mp = micoPhotos[sci];
-      if (key) put(b, `${base}data/photos/${key}.webp`, `${L('Photo', 'Surat')}: ${own[key][3]}, ${own[key][4]}`);
-      else if (mp) put(b, `${base}data/mico/photos/${mp[0]}`, `${L('Photo', 'Surat')}: ${mp[1]}, ${mp[2]}`);
+      if (key) put(b, `${base}data/photos/${key}.webp`, `${t('Photo')}: ${own[key][3]}, ${own[key][4]}`);
+      else if (mp) put(b, `${base}data/mico/photos/${mp[0]}`, `${t('Photo')}: ${mp[1]}, ${mp[2]}`);
       else rest.push(b);
     });
     if (rest.length) api.photosByName(rest.map((b) => b.dataset.name!)).then((photos) => { // Wikidata matches names as written
       for (const b of rest) {
         const file = photos.get(b.dataset.sci!);
-        if (file) { const [src, fallback] = commonsThumbs(file, 120); put(b, src, L('Photo: Wikimedia Commons', 'Surat: Wikimedia Commons'), fallback); }
+        if (file) { const [src, fallback] = commonsThumbs(file, 120); put(b, src, t('Photo: Wikimedia Commons'), fallback); }
       }
     }).catch(() => {});
   } catch {
-    list.append(h('p', { class: 'fine', text: L('The list did not load. Reload the page to try again.', 'Roʻyxat yuklanmadi. Sahifani qayta yuklang.') }));
+    list.append(h('p', { class: 'fine', text: t('The list did not load. Reload the page to try again.') }));
   }
 });
 migFilter.addEventListener('input', () => {

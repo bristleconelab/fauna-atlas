@@ -2,10 +2,11 @@
 // ("Tashkent", "Serengeti", "Aral Sea"). Keyboard friendly (arrows, Enter, Escape).
 import * as api from './api';
 import { h, loadPhoto } from './dom';
-import { GROUP_LABEL, groupOfKeys, type GroupId } from './taxa';
+import { groupOfKeys, type GroupId } from './taxa';
+import { GROUP_LABEL } from './labels';
 import { commonsThumbs } from './wiki';
 import { silhouette } from './silhouettes';
-import { L } from './i18n';
+import { t } from './i18n';
 
 export interface Hit { id: number; scientificName: string; group: GroupId; exact: boolean; common?: string }
 type Item = { kind: 'taxon'; hit: Hit } | { kind: 'place'; place: api.Place };
@@ -61,7 +62,7 @@ export function initSearch(input: HTMLInputElement, list: HTMLUListElement, stat
     ctl?.abort();
     ctl = new AbortController();
     const signal = ctl.signal;
-    status.textContent = L('Searching…', 'Qidirilmoqda…');
+    status.textContent = t('Searching…');
     const val = <T,>(r: PromiseSettledResult<T[]>) => (r.status === 'fulfilled' ? r.value : []);
     // Latin script, Uzbek ʻ (U+02BB) and apostrophes included: "oʻrdak" still goes to GBIF
     const latin = !/[^\u0000-\u024F\u02BB\u02BC\u2018\u2019]/.test(q);
@@ -92,13 +93,13 @@ export function initSearch(input: HTMLInputElement, list: HTMLUListElement, stat
     cursor = -1;
     if (!items.length) {
       status.textContent = [s1, wd, places].every((r) => r.status === 'rejected')
-        ? L('Search is not answering right now. Check the connection and try again.', 'Qidiruv hozir javob bermayapti. Internetni tekshirib, qayta urinib koʻring.')
-        : L(`No animal or place called "${q}". Try another name, or the scientific name.`, `"${q}" nomli hayvon yoki joy topilmadi. Boshqa nom yoki ilmiy nomni sinab koʻring.`);
+        ? t('Search is not answering right now. Check the connection and try again.')
+        : t('No animal or place called "{0}". Try another name, or the scientific name.', q);
       list.append(h('li', { class: 'empty', text: status.textContent }));
-    } else status.textContent = L(`${items.length} results`, `${items.length} ta natija`);
+    } else status.textContent = t('{0} results', items.length);
     items.forEach((it, i) => {
-      if (it.kind === 'place' && (i === 0 || items[i - 1].kind !== 'place')) list.append(h('li', { class: 'hits-head', text: L('Places', 'Joylar'), attrs: { role: 'presentation' } }));
-      if (it.kind === 'taxon' && pl.length && (i === 0 || items[i - 1].kind !== 'taxon')) list.append(h('li', { class: 'hits-head', text: L('Animals', 'Hayvonlar'), attrs: { role: 'presentation' } }));
+      if (it.kind === 'place' && (i === 0 || items[i - 1].kind !== 'place')) list.append(h('li', { class: 'hits-head', text: t('Places'), attrs: { role: 'presentation' } }));
+      if (it.kind === 'taxon' && pl.length && (i === 0 || items[i - 1].kind !== 'taxon')) list.append(h('li', { class: 'hits-head', text: t('Animals'), attrs: { role: 'presentation' } }));
       const li = it.kind === 'taxon' ? taxonRow(it.hit) : placeRow(it.place);
       if (it.kind === 'taxon') li.dataset.taxon = String(it.hit.id);
       li.id = `hit-${i}`;
@@ -115,7 +116,7 @@ export function initSearch(input: HTMLInputElement, list: HTMLUListElement, stat
     hits.forEach((hit) => {
       const w = info.get(hit.id), li = list.querySelector<HTMLElement>(`li[data-taxon="${hit.id}"]`);
       if (!li) return;
-      const name = w?.name ?? (lang !== 'uz' ? hit.common : undefined);
+      const name = w?.name ?? (lang === 'en' ? hit.common : undefined);
       if (name) { li.querySelector('.hit-name')!.textContent = name.charAt(0).toUpperCase() + name.slice(1); li.querySelector('.latin')!.textContent = hit.scientificName; }
       if (w?.image) loadPhoto(li.querySelector('.hit-thumb')!, commonsThumbs(w.image, 120), '', true);
     });

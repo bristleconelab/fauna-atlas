@@ -82,10 +82,10 @@
   <header class="topbar">
     <h1 class="brand"><img src="/brand/fauna-atlas-logo-dark.svg" alt="Fauna Atlas" width="126" height="35"></h1>
     <div class="search" role="search">
-      <label for="search" class="visually-hidden" data-uz="Hayvon yoki joy qidirish">Find an animal or a place</label>
+      <label for="search" class="visually-hidden" data-t>Find an animal or a place</label>
       <svg class="search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
       <input id="search" type="search" autocomplete="off" spellcheck="false" placeholder="Animal or place"
-        data-placeholder="Animal or place" data-uz-placeholder="Hayvon yoki joy"
+        data-t-placeholder
         role="combobox" aria-expanded="false" aria-controls="hits" aria-autocomplete="list">
       <ul id="hits" role="listbox" hidden></ul>
       <kbd class="search-key" aria-hidden="true">/</kbd>
@@ -93,72 +93,73 @@
     </div>
   </header>
 
-  <div class="lang-switch" role="group" aria-label="Language / Til">
-    <button data-lang="en" lang="en">EN</button><button data-lang="uz" lang="uz">UZ</button>
+  <div class="lang-switch">
+    <button class="lang-btn" aria-haspopup="menu" aria-expanded="false" aria-label="Language" data-t-label><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z"/></svg><span class="lang-code">EN</span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10l5 5 5-5"/></svg></button>
+    <div class="lang-menu" role="menu" hidden></div>
   </div>
 
   <div class="credits">
     <div id="sources" class="sources-card" hidden>
-      <p data-uz="Maʼlumot va xarita manbalari">Data and map sources</p>
+      <p data-t>Data and map sources</p>
       <ul>
         <li>Animal records: <a href="https://www.gbif.org" target="_blank" rel="noopener">GBIF.org</a></li>
         <li>Imagery: NASA Blue Marble via <a href="https://earthdata.nasa.gov/gibs" target="_blank" rel="noopener">GIBS</a>; close up, <a href="https://s2maps.eu" target="_blank" rel="noopener">Sentinel-2 cloudless 2016</a> by EOX, CC BY 4.0</li>
         <li>Borders and names: <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</li>
       </ul>
     </div>
-    <button id="sources-open" class="credit-i" aria-expanded="false" aria-controls="sources" aria-label="Data and map sources" data-uz-label="Maʼlumot va xarita manbalari"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.01"/></svg></button>
+    <button id="sources-open" class="credit-i" aria-expanded="false" aria-controls="sources" aria-label="Data and map sources" data-t-label><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.01"/></svg></button>
     <a class="powered" href="https://github.com/bristleconelab" target="_blank" rel="noopener"><img src="/brand/bristleconelab-mark-light-128.png" alt="" width="24" height="24"><span>by <b>bristlecone lab</b></span></a>
   </div>
 
-  <p id="hint" data-uz="Qaysi hayvonlar yashashini koʻrish uchun istalgan joyni bosing">Click anywhere to see which animals live there</p>
+  <p id="hint" data-t>Click anywhere to see which animals live there</p>
 
   <section id="tour" class="tour" hidden aria-live="polite"></section>
 
   <div class="corner">
     <div id="legend" hidden data-mode="records">
-      <div class="mode" role="group" aria-label="Colour the squares by" data-uz-label="Kvadratlarni boʻyash">
-        <button data-mode="records" aria-pressed="true" data-uz="Yozuvlar soni">How many records</button>
-        <button data-mode="age" aria-pressed="false" data-uz="Oxirgi kuzatuv">Last looked at</button>
+      <div class="mode" role="group" aria-label="Colour the squares by" data-t-label>
+        <button data-mode="records" aria-pressed="true" data-t>How many records</button>
+        <button data-mode="age" aria-pressed="false" data-t>Last looked at</button>
       </div>
       <div class="legend-records">
-        <p class="legend-title" data-uz="Hayvon yozuvlari, GBIF">Animal records, GBIF</p>
+        <p class="legend-title" data-t>Animal records, GBIF</p>
         <div class="ramp fauna" aria-hidden="true"></div>
-        <div class="ramp-ticks" aria-hidden="true"><span data-uz="kam">few</span><span data-uz="koʻp">many</span></div>
+        <div class="ramp-ticks" aria-hidden="true"><span data-t>few</span><span data-t>many</span></div>
       </div>
       <ul class="legend-age">
-        <li><span class="swatch" style="background:#5a8a4c"></span><span data-uz="oxirgi 10 yil ichida yozuv bor">records in the last 10 years</span></li>
-        <li><span class="swatch" style="background:#9aa39e"></span><span data-uz="faqat eski yozuvlar">only older records</span></li>
+        <li><span class="swatch" style="background:#5a8a4c"></span><span data-t>records in the last 10 years</span></li>
+        <li><span class="swatch" style="background:#9aa39e"></span><span data-t>only older records</span></li>
       </ul>
-      <p id="legend-note" class="fine" data-uz="Yuklanmoqda…">Loading…</p>
+      <p id="legend-note" class="fine" data-t>Loading…</p>
     </div>
-    <nav class="corner-buttons" aria-label="Explore" data-uz-label="Koʻrish">
-      <button id="looked" class="nav-btn" aria-pressed="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span class="lbl" data-uz="Odamlar qayerni oʻrgangan">Where people have looked</span></button>
-      <button id="tour-open" class="nav-btn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg><span class="lbl" data-uz="Sayohat">Tour</span></button>
-      <button id="near-me" class="nav-btn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg><span class="lbl" data-uz="Yonimda">Near me</span></button>
-      <button id="migrations-open" class="nav-btn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9c2.5-2 4.5-2 7 0s4.5 2 7 0 3-1.5 4-1.5"/><path d="M3 15c2.5-2 4.5-2 7 0s4.5 2 7 0 3-1.5 4-1.5"/></svg><span class="lbl" data-uz="Dengiz migratsiyalari">Sea migrations</span></button>
-      <button id="about-open" class="nav-btn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.01"/></svg><span class="lbl" data-uz="Haqida">About</span></button>
+    <nav class="corner-buttons" aria-label="Explore" data-t-label>
+      <button id="looked" class="nav-btn" aria-pressed="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span class="lbl" data-t>Where people have looked</span></button>
+      <button id="tour-open" class="nav-btn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg><span class="lbl" data-t>Tour</span></button>
+      <button id="near-me" class="nav-btn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg><span class="lbl" data-t>Near me</span></button>
+      <button id="migrations-open" class="nav-btn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9c2.5-2 4.5-2 7 0s4.5 2 7 0 3-1.5 4-1.5"/><path d="M3 15c2.5-2 4.5-2 7 0s4.5 2 7 0 3-1.5 4-1.5"/></svg><span class="lbl" data-t>Sea migrations</span></button>
+      <button id="about-open" class="nav-btn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.01"/></svg><span class="lbl" data-t>About</span></button>
     </nav>
   </div>
 
   <aside id="panel" hidden aria-live="polite">
-    <button class="sheet-handle" aria-label="Resize the panel" data-uz-label="Panel balandligini oʻzgartirish" role="slider" aria-valuemin="30" aria-valuemax="92" aria-valuenow="58" aria-orientation="vertical"></button>
-    <button class="panel-close" aria-label="Close panel" data-uz-label="Panelni yopish">×</button>
+    <button class="sheet-handle" aria-label="Resize the panel" data-t-label role="slider" aria-valuemin="30" aria-valuemax="92" aria-valuenow="58" aria-orientation="vertical"></button>
+    <button class="panel-close" aria-label="Close panel" data-t-label>×</button>
     <div class="panel-body"></div>
   </aside>
 
   <dialog id="migrations" class="drawer" aria-labelledby="migrations-title">
     <div class="mig-head">
-      <button class="about-close" aria-label="Close" data-uz-label="Yopish">×</button>
-      <h2 id="migrations-title" data-uz="Dengiz migratsiyasini kuzating">Follow a sea migration</h2>
-      <p data-uz="Yoʻllari kuzatuv va belgilash tadqiqotlaridan yigʻilgan 109 ta dengiz hayvoni (MiCO, Bentley va boshq. 2025). Migratsiyada foydalanadigan joylarini koʻrish uchun bittasini tanlang; belgilash tadqiqotlari eʼlon qilingan boʻlsa, uning sahifasi belgilangan hayvonlarning haqiqiy yoʻllarini ham koʻrsatadi.">109 sea animals whose journeys have been pieced together from tracking and tagging studies (MiCO, Bentley et al. 2025). Pick one to see the places it uses on its migrations; where tag studies are published, its page also plays the real journeys of tagged animals.</p>
-      <label for="mig-filter" class="visually-hidden" data-uz="Hayvonlarni saralash">Filter the animals</label>
-      <input id="mig-filter" type="search" autocomplete="off" placeholder="Filter: turtle, albatross, Balaenoptera…" data-uz-placeholder="Saralash: turtle, albatross, Balaenoptera…">
+      <button class="about-close" aria-label="Close" data-t-label>×</button>
+      <h2 id="migrations-title" data-t>Follow a sea migration</h2>
+      <p data-t>109 sea animals whose journeys have been pieced together from tracking and tagging studies (MiCO, Bentley et al. 2025). Pick one to see the places it uses on its migrations; where tag studies are published, its page also plays the real journeys of tagged animals.</p>
+      <label for="mig-filter" class="visually-hidden" data-t>Filter the animals</label>
+      <input id="mig-filter" type="search" autocomplete="off" placeholder="Filter: turtle, albatross, Balaenoptera…" data-t-placeholder>
     </div>
     <div class="mig-list"></div>
   </dialog>
 
   <dialog id="about" class="drawer" aria-labelledby="about-title">
-    <button class="about-close" aria-label="Close" data-uz-label="Yopish">×</button>
+    <button class="about-close" aria-label="Close" data-t-label>×</button>
     <div data-l="en">
     <h2 id="about-title">About this atlas</h2>
     <p>Fauna Atlas shows which animals people have recorded on land, in rivers and lakes, in the sea and in the air. Click a spot to see the species found within a square about 150 km across, or search for an animal or a place to see where it has been seen, how high or deep it lives, and when.</p>
