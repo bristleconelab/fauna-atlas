@@ -173,7 +173,8 @@ export class Globe {
   constructor(container: HTMLElement, lang = 'en') {
     this.map = new maplibregl.Map({
       container, style: style(lang), center: [60, 8], zoom: 2.1, minZoom: 0.8, maxZoom: 12,
-      attributionControl: { compact: true }, renderWorldCopies: false,
+      // credits: our own closed-by-default sources card beside the bristlecone credit (index.html .credits)
+      attributionControl: false, renderWorldCopies: false,
       transformRequest: (url, kind) => fadePolarOverlays(url, kind),
     });
     this.map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');

@@ -265,6 +265,15 @@ migFilter.addEventListener('input', () => {
 });
 migrations.querySelector('.about-close')?.addEventListener('click', () => migrations.close());
 
+// Data and map sources: a small card beside the credit, closed until asked for
+{
+  const btn = $<HTMLButtonElement>('#sources-open'), card = $('#sources');
+  const set = (open: boolean) => { card.hidden = !open; btn.setAttribute('aria-expanded', String(open)); };
+  btn.addEventListener('click', (e) => { e.stopPropagation(); set(btn.getAttribute('aria-expanded') !== 'true'); });
+  document.addEventListener('click', (e) => { if (!card.hidden && !card.contains(e.target as Node)) set(false); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') set(false); });
+}
+
 // About
 const about = $<HTMLDialogElement>('#about');
 $('#about-open').addEventListener('click', () => openDrawer(about));
