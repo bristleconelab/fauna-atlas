@@ -318,6 +318,32 @@ export async function photosByName(names: string[], signal?: AbortSignal): Promi
   return out;
 }
 
+/** Where a species has been recorded, as cells of a 256 x 256 Web Mercator grid (~156 km at the equator): read from
+ *  GBIF's density map tiles at zoom 2 (16 tiles, square bins of 8 px), a cell counting when its square is coloured.
+ *  Sixteen small images instead of thousands of records; the same wild-records filter as the map. */
+export async function presenceCells(taxonKey: number, signal?: AbortSignal): Promise<import('./science').Cell[]> {
+  const { mercatorCell } = await import('./science');
+  const Z = 2, PER = 64, N = 4 * PER, out: import('./science').Cell[] = [];
+  await Promise.all(Array.from({ length: 16 }, async (_, i) => {
+    const tx = i % 4, ty = Math.floor(i / 4);
+    const url = `https://api.gbif.org/v2/map/occurrence/density/${Z}/${tx}/${ty}@1x.png?${qs({ srs: 'EPSG:3857', bin: 'square', squareSize: 64, style: 'classic-noborder.poly', basisOfRecord: WILD_BASIS, taxonKey })}`;
+    const res = await fetch(url, { signal });
+    if (!res.ok) throw new HttpError(res.status, url);
+    const blob = await res.blob();
+    if (!blob.size) return; // 204: no records in this tile
+    const bmp = await createImageBitmap(blob);
+    const W = bmp.width, step = W / PER;
+    const c = new OffscreenCanvas(W, bmp.height), g = c.getContext('2d')!;
+    g.drawImage(bmp, 0, 0); bmp.close();
+    const px = g.getImageData(0, 0, W, W).data;
+    for (let cy = 0; cy < PER; cy++) for (let cx = 0; cx < PER; cx++) {
+      const x = Math.floor(cx * step + step / 2), y = Math.floor(cy * step + step / 2);
+      if (px[(y * W + x) * 4 + 3] > 0) out.push({ bbox: mercatorCell(tx * PER + cx, ty * PER + cy, N), n: 1 });
+    }
+  }));
+  return out;
+}
+
 // ---------- tag tracks (stored: scripts/fetch_tracks.py writes data/tracks/) ----------
 let trackIndexP: Promise<Record<string, number>> | null = null;
 /** Species (GBIF key) with stored tag tracks, and how many animals were drawn. Empty when the site has none. */

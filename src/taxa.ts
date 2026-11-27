@@ -174,7 +174,8 @@ export const ZONES: { from: number; to: number; en: string; uz: string; param: '
  *  (many land datasets fill depth = 0). Pure. */
 export function signedHeights(elevation: { name: string; count: number }[], depth: { name: string; count: number }[]): [number, number][] {
   return [
-    ...elevation.map((x) => [Number(x.name), x.count] as [number, number]).filter(([v]) => Number.isFinite(v) && v >= -500 && v <= 9000),
+    // elevation exactly 0 is a filler too (26 of the African bush elephant's 35 heights, 2026-11-27): left out, like depth 0
+    ...elevation.map((x) => [Number(x.name), x.count] as [number, number]).filter(([v]) => Number.isFinite(v) && v !== 0 && v >= -500 && v <= 9000),
     ...depth.map((x) => [-Number(x.name), x.count] as [number, number]).filter(([v]) => Number.isFinite(v) && v <= -0.5 && v >= -11000),
   ];
 }
@@ -184,6 +185,7 @@ export function zoneCounts(elevation: { name: string; count: number }[], depth: 
   for (const [param, list] of [['elevation', elevation], ['depth', depth]] as const) {
     for (const x of list) {
       const v = Number(x.name);
+      if (param === 'elevation' && v === 0) continue; // filler, see signedHeights
       const i = ZONES.findIndex((z) => z.param === param && v >= z.range[0] && v <= z.range[1]);
       if (i >= 0) out[i] += x.count;
     }

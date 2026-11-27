@@ -77,3 +77,18 @@ describe('formatLife', () => {
     expect(formatLife(0.5, 'uz')).toBe('6 oy');
   });
 });
+
+describe('range overlap on a Mercator grid', () => {
+  it('builds Mercator cells and measures shared area', async () => {
+    const { mercatorCell, rangeOverlap } = await import('../src/science');
+    const c = mercatorCell(0, 0, 1);
+    expect(c.west).toBe(-180); expect(c.east).toBe(180);
+    expect(c.north).toBeCloseTo(85.0511, 3); expect(c.south).toBeCloseTo(-85.0511, 3);
+    // two cells next to each other on the equator row of a 256 grid, sharing one of them
+    const cell = (gx: number) => ({ bbox: mercatorCell(gx, 128, 256), n: 1 });
+    const r = rangeOverlap([cell(10), cell(11)], [cell(11), cell(12)]);
+    expect(r.shared).toBe(1);
+    expect(r.sharedKm2).toBeGreaterThan(24000); expect(r.sharedKm2).toBeLessThan(24600); // ~156 x 156 km at the equator: 24,446
+    expect(r.jaccard).toBeCloseTo(1 / 3, 2);
+  });
+});

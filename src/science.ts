@@ -129,3 +129,18 @@ export function toCsv(rows: (string | number | null | undefined)[][]): string {
   };
   return rows.map((r) => r.map(f).join(',')).join('\r\n') + '\r\n';
 }
+
+/** The bounds of cell (gx, gy) of an n x n Web Mercator grid over the world (gy = 0 at the north edge, 85.05 deg). */
+export function mercatorCell(gx: number, gy: number, n: number): BBox {
+  const lat = (y: number) => (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n))) * 180) / Math.PI;
+  return { west: (gx / n) * 360 - 180, east: ((gx + 1) / n) * 360 - 180, north: lat(gy), south: lat(gy + 1) };
+}
+
+/** Areas of two ranges given as sets of grid cells, and how much of them they share (Jaccard: shared / either). */
+export function rangeOverlap(a: Cell[], b: Cell[]): { aKm2: number; bKm2: number; sharedKm2: number; jaccard: number; shared: number } {
+  const km2 = (cs: Cell[]) => Math.round(cs.reduce((t, c) => t + cellAreaKm2(c.bbox), 0));
+  const o = overlap(a, b);
+  const aKm2 = km2(a), bKm2 = km2(b);
+  const either = aKm2 + bKm2 - o.sharedKm2;
+  return { aKm2, bKm2, sharedKm2: o.sharedKm2, jaccard: either ? o.sharedKm2 / either : 0, shared: o.shared };
+}

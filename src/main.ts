@@ -56,6 +56,7 @@ const pad = () => {
 
 const panel = new Panel(panelEl, $('#panel .panel-body'), {
   showSquare: (b) => globe.showSquare(b),
+  showOverlap: (fc) => globe.showOverlap(fc),
   showRanges: (r) => globe.showRanges(r),
   flyTo: (lon, lat, zoom) => globe.flyTo(lon, lat, zoom),
   setHash: (s) => setHash(s),

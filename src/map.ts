@@ -94,6 +94,7 @@ function style(lang: string): StyleSpecification {
       },
       omt: { type: 'vector', url: OMT, attribution: '<a href="https://openfreemap.org">OpenFreeMap</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' },
       square: { type: 'geojson', data: EMPTY },
+      overlap: { type: 'geojson', data: EMPTY },
       micoRoutes: { type: 'geojson', data: EMPTY },
       micoSites: { type: 'geojson', data: EMPTY },
       tracks: { type: 'geojson', data: EMPTY },
@@ -136,6 +137,8 @@ function style(lang: string): StyleSpecification {
           'circle-radius': 4.5, 'circle-stroke-color': COLORS.abyss, 'circle-stroke-width': 1.5,
         },
       },
+      // where two compared species are both recorded
+      { id: 'overlap-fill', type: 'fill', source: 'overlap', paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.55 } },
       { id: 'square', type: 'line', source: 'square', paint: { 'line-color': COLORS.foam, 'line-width': 2.5 } },
     ],
   };
@@ -245,6 +248,12 @@ export class Globe {
   async dimRange(dim: boolean) {
     await this.ready;
     for (const id of this.rangeLayers) if (this.map.getLayer(id)) this.map.setPaintProperty(id, 'raster-opacity', dim ? 0.25 : this.rangeOpacity.get(id) ?? 0.8);
+  }
+
+  /** Cells where both compared species are recorded; null clears them. */
+  async showOverlap(fc: GeoJSON.FeatureCollection | null) {
+    await this.ready;
+    (this.map.getSource('overlap') as GeoJSONSource).setData(fc ?? EMPTY);
   }
 
   /** Set one of the journey overlays (micoRoutes, micoSites, tracks, heads); null clears it. */

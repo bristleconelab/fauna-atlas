@@ -561,3 +561,13 @@ body.drawer-open #hint { display: none; }
   .sources-card { bottom: auto; top: 40px; width: min(300px, calc(100vw - 32px)); }
   body.panel-open .credits, body.drawer-open .credits { display: none; }
 }
+
+/* ---------- compare: where both are recorded ---------- */
+.overlap-box { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
+.overlap-box h3 { margin: 0 0 8px; font-size: 16px; }
+.ov-rows { list-style: none; margin: 0 0 8px; padding: 0; display: grid; gap: 6px; }
+.ov-rows li { display: grid; grid-template-columns: 8.5rem 1fr auto; gap: 10px; align-items: center; font-size: 13.5px; }
+.ov-rows span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-bar { height: 8px; border-radius: 4px; width: var(--w); }
+.ov-bar.a { background: #f2c94c; } .ov-bar.b { background: #8ecbff; } .ov-bar.both { background: #ffffff; box-shadow: inset 0 0 0 1px #9aa8a0; }
+.ov-rows b { font-variant-numeric: tabular-nums; font-weight: 600; }

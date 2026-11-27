@@ -11,7 +11,7 @@ import {
 import { articleTitle, commonsAudio, commonsThumbs, type WikiInfo } from './wiki';
 import { renderJourneys, type JourneyHost } from './journeys';
 import { silhouette } from './silhouettes';
-import { chao1, formatLength, formatLife, formatMass, parseTraits, toCsv, type Traits } from './science';
+import { chao1, formatLength, formatLife, formatMass, parseTraits, rangeOverlap, toCsv, type Traits } from './science';
 import { L, count, lang } from './i18n';
 
 const PAGE = 36;
@@ -24,6 +24,8 @@ const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 export type RangeMode = { key: number; mode: 'all' | 'then' | 'now' | 'a' | 'b' };
 export interface PanelHost {
   showSquare(b: BBox | null): void;
+  /** Cells where both compared species are recorded (null clears). */
+  showOverlap(fc: GeoJSON.FeatureCollection | null): void;
   /** Species ranges as GBIF map tiles; several at once for then/now and side by side. */
   showRanges(r: RangeMode[]): void;
   flyTo(lon: number, lat: number, zoom?: number): void;
@@ -70,6 +72,7 @@ export class Panel {
     this.root.hidden = true;
     this.host.showSquare(null);
     this.host.showRanges([]);
+    this.host.showOverlap(null);
     if (writeHash) this.host.setHash({});
     this.host.opened(false);
   }
@@ -78,6 +81,7 @@ export class Panel {
     this.ctl.abort();
     this.ctl = new AbortController();
     this.runCleanups();
+    this.host.showOverlap(null); // only the compare view draws it
     this.root.hidden = false;
     this.host.opened(true);
     this.body.replaceChildren();
@@ -631,7 +635,31 @@ export class Panel {
       ...row(L('Usually at', 'Odatda'), vr(A), vr(B)));
     this.body.append(h('ul', { class: 'legend-dots' }, h('li', {}, h('span', { class: 'dot', attrs: { style: 'background:#f2c94c' } }), nm(A)),
       h('li', {}, h('span', { class: 'dot', attrs: { style: 'background:#8ecbff' } }), nm(B))),
-      h('p', { class: 'fine', text: L('Heights are above sea level, depths below it (negative). Where the two colours overlap on the globe, both have been recorded.', 'Balandlik dengiz sathidan yuqori, chuqurlik undan past (manfiy). Globusda ikki rang ustma-ust tushgan joyda ikkalasi ham qayd etilgan.') }));
+      h('p', { class: 'fine', text: L('Heights are above sea level, depths below it (negative).', 'Balandlik dengiz sathidan yuqori, chuqurlik undan past (manfiy).') }));
+
+    // where both are recorded: GBIF's density squares read as presence on one grid, the shared cells drawn white
+    const both = h('section', { class: 'overlap-box' }, h('h3', { text: L('Where both are recorded', 'Ikkalasi ham qayd etilgan joylar') }), h('p', { class: 'fine', text: L('Measuring…', 'Oʻlchanmoqda…') }));
+    this.body.append(both);
+    const [ca, cb] = await Promise.all([api.presenceCells(a, signal).catch(() => null), api.presenceCells(b, signal).catch(() => null)]);
+    if (t !== this.token) return;
+    if (!ca || !cb) { both.lastElementChild!.textContent = L('The range maps did not load; try again in a moment.', 'Tarqalish xaritalari yuklanmadi; birozdan keyin qayta urinib koʻring.'); return; }
+    const o = rangeOverlap(ca, cb);
+    const keyOf = (c: { bbox: BBox }) => `${c.bbox.west.toFixed(3)},${c.bbox.south.toFixed(3)}`;
+    const inB = new Set(cb.map(keyOf));
+    const sharedCells = ca.filter((c) => inB.has(keyOf(c)));
+    this.host.showOverlap({ type: 'FeatureCollection', features: sharedCells.map((c) => ({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [[[c.bbox.west, c.bbox.south], [c.bbox.east, c.bbox.south], [c.bbox.east, c.bbox.north], [c.bbox.west, c.bbox.north], [c.bbox.west, c.bbox.south]]] } })) });
+    const km = (x: number) => (x >= 1e6 ? L(`${(x / 1e6).toFixed(1)} million km²`, `${(x / 1e6).toFixed(1)} mln km²`) : `${fmt(Math.round(x / 1000) * 1000)} km²`);
+    const bar = (v: number, cls: string) => h('span', { class: `ov-bar ${cls}`, attrs: { style: `--w:${Math.max(1, (100 * v) / Math.max(o.aKm2, o.bKm2, 1)).toFixed(1)}%` } });
+    both.replaceChildren(both.firstElementChild!,
+      h('ul', { class: 'ov-rows' },
+        h('li', {}, h('span', { text: nm(A) }), bar(o.aKm2, 'a'), h('b', { text: km(o.aKm2) })),
+        h('li', {}, h('span', { text: nm(B) }), bar(o.bKm2, 'b'), h('b', { text: km(o.bKm2) })),
+        h('li', {}, h('span', { text: L('Both', 'Ikkalasi') }), bar(o.sharedKm2, 'both'), h('b', { text: km(o.sharedKm2) }))),
+      h('p', { text: o.sharedKm2
+        ? L(`They share ${Math.round(o.jaccard * 100)} % of the ground either has been recorded on (white on the globe).`, `Ular biri qayd etilgan hududning ${Math.round(o.jaccard * 100)} % ini boʻlishadi (globusda oq).`)
+        : L('No ground where both have been recorded.', 'Ikkalasi ham qayd etilgan hudud yoʻq.') }),
+      h('p', { class: 'fine', text: L('Cells of about 156 km at the equator (smaller towards the poles) where at least one record falls; a record in a cell does not mean the whole cell is used. Overlap of records, not of true ranges.',
+        'Ekvatorda taxminan 156 km lik kataklar (qutblarga tomon kichrayadi), kamida bitta yozuv tushgan; katakda yozuv borligi butun katakdan foydalanilishini bildirmaydi. Haqiqiy tarqalish emas, yozuvlarning kesishishi.') }));
   }
 }
 

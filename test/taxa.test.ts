@@ -139,7 +139,7 @@ describe('vertical range from exact values', () => {
     const shore = signedHeights([{ name: '2.0', count: 40 }, { name: '5.0', count: 40 }, { name: '15.0', count: 20 }], []);
     expect(verticalRange([], shore)).toEqual({ from: 0, to: 5, records: 100 });
     // the Dead Sea and the Caspian shore count as lowland; depth 0 (filled by land datasets) does not count as sea
-    expect(signedHeights([{ name: '-430', count: 3 }], [{ name: '0.0', count: 9 }, { name: '4300', count: 2 }])).toEqual([[-430, 3], [-4300, 2]]);
+    expect(signedHeights([{ name: '-430', count: 3 }, { name: '0.0', count: 26 }], [{ name: '0.0', count: 9 }, { name: '4300', count: 2 }])).toEqual([[-430, 3], [-4300, 2]]);
     expect(weightedQuantile([[10, 1], [20, 1], [30, 2]], 0.5)).toBe(20);
   });
 });
