@@ -4,7 +4,7 @@
 const SNAPS = [0.3, 0.58, 0.92];
 
 /** reset: back to half height (a newly opened panel); refresh: keep the chosen height after a resize. */
-export interface Sheet { height(): number; reset(): void; refresh(): void }
+export interface Sheet { height(): number; reset(): void; refresh(): void; collapse(): void }
 
 export function initSheet(panel: HTMLElement, handle: HTMLButtonElement, active: () => boolean, onChange: (px: number) => void): Sheet {
   let idx = 1, dragging = false, startY = 0, startH = 0, moved = false, lastY = 0, lastT = 0, v = 0;
@@ -60,6 +60,8 @@ export function initSheet(panel: HTMLElement, handle: HTMLButtonElement, active:
 
   return {
     height: () => (active() ? px(idx) : 0),
+    /** Down to the peek height, so the globe is free (drawing an area). */
+    collapse: () => { if (active()) snap(0); },
     reset: () => {
       if (active()) { idx = 1; apply(px(idx), true); }
       else { panel.style.height = ''; document.body.classList.remove('sheet-peek'); }

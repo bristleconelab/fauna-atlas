@@ -395,6 +395,7 @@ export function writePages(root: string, out: string): number {
   put('places/index.html', placesIndex(m));
   put('sitemap.xml', sitemap(m, S.fetched));
   put('data/known.json', knownIndex(m, (key) => existsSync(join(root, 'public/data/photos', `${key}.webp`))));
+  put('data/places.json', JSON.stringify(Object.fromEntries(m.places.map((p) => [p.iso, p.slug]))));
   mkdirSync(join(out, 'static'), { recursive: true });
   copyFileSync(join(root, 'pages/pages.css'), join(out, 'static/pages.css'));
   for (const [from, to] of FONTS) copyFileSync(join(root, from), join(out, 'static', to));

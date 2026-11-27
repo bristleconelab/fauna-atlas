@@ -3,7 +3,8 @@
 // owns an AbortController: opening another view cancels the requests of the one before.
 import * as api from './api';
 import { h, fmt, loadPhoto, download } from './dom';
-import { bboxToWkt, formatLatLon, geohash, geohashBounds, type BBox } from './geo';
+import { bboxToWkt, formatLatLon, geohash, geohashBounds, outerRings, ringsAreaKm2, ringsBox, ringsToWkt, type BBox, type Ring } from './geo';
+import type { AreaRef } from './state';
 import {
   countByGroup, interleaveGroups, GROUPS, groupOfKeys, rankSpecies, THREATENED, verticalRange, ZONES,
   type GroupId, type Taxon,
@@ -19,18 +20,23 @@ const PAGE = 36;
 /** Species whose photos are looked up before the first screen is drawn, so it can lead with ones that have a photo. */
 const PREFETCH = 72;
 export const FEW_RECORDS = 1000;
+/** "Mostly found here": at least this share of a species' worldwide records lie in the area. */
+const HERE_SHARE = 0.5;
 const ext = { target: '_blank', rel: 'noopener' };
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export type RangeMode = { key: number; mode: 'all' | 'then' | 'now' | 'a' | 'b' };
 export interface PanelHost {
-  showSquare(b: BBox | null): void;
+  showSquare(b: BBox | Ring[] | null): void;
+  /** Let the reader draw an area on the globe; null if they cancel. */
+  drawArea(): Promise<Ring | null>;
+  fitBox(b: [number, number, number, number]): void;
   /** Cells where both compared species are recorded (null clears). */
   showOverlap(fc: GeoJSON.FeatureCollection | null): void;
   /** Species ranges as GBIF map tiles; several at once for then/now and side by side. */
   showRanges(r: RangeMode[]): void;
   flyTo(lon: number, lat: number, zoom?: number): void;
-  setHash(s: { at?: { lat: number; lon: number }; sp?: number; vs?: number }): void;
+  setHash(s: { at?: { lat: number; lon: number }; area?: AreaRef; sp?: number; vs?: number }): void;
   opened(open: boolean): void;
   focusSearch(placeholder: string): void;
   journeys: JourneyHost;
@@ -41,12 +47,14 @@ interface Known { name?: string; sci?: string; image?: string; photo?: api.Photo
 
 export class Panel {
   private token = 0;
-  private place: { lat: number; lon: number } | null = null;
+  private place: { lat: number; lon: number; area?: AreaRef; label?: string; outline?: BBox | Ring[] } | null = null;
   private species: { id: number; name: string } | null = null;
   private cleanups: (() => void)[] = [];
   private ctl = new AbortController();
   private lang = api.readerLanguage();
   private known = new Map<number, Known>();
+  /** Share of each species' worldwide records that lie in the current area ("mostly found here"). */
+  private share: Map<number, number> | null = null;
   /** IUCN category by GBIF key, from the threatened-only filter (badges on tiles). */
   private red = new Map<number, string>();
   comparingFrom: number | null = null;
@@ -64,7 +72,7 @@ export class Panel {
   }
 
   get isOpen() { return !this.root.hidden; }
-  rememberPlace(lat: number, lon: number) { this.place = { lat, lon }; }
+  rememberPlace(lat: number, lon: number, area?: AreaRef) { this.place = { lat, lon, area }; }
 
   close(writeHash = true) {
     this.token++;
@@ -93,34 +101,69 @@ export class Panel {
   }
 
   // ---------------- Who lives here ----------------
-  async showPlace(lat: number, lon: number) {
+  async showPlace(lat: number, lon: number, area: AreaRef = { kind: 'square', precision: 3 }, label?: string) {
     const from = this.species;
     const { t, signal } = this.open();
     this.species = null;
-    this.place = { lat, lon };
     this.host.showRanges([]);
-    this.host.setHash({ at: { lat, lon } });
-    const box = geohashBounds(geohash(lon, lat, 3));
-    this.host.showSquare(box);
-    const wkt = bboxToWkt(box);
+    this.host.setHash({ at: { lat, lon }, area });
+
+    // the area: a geohash square around the point, a GADM region (GBIF filters by its id) or a drawn shape
+    let where: api.Where, areaText: string, outline: BBox | Ring[] | null = null;
+    const title = h('h2', { class: 'place-title', text: label ?? formatLatLon(lat, lon) });
+    const sub = h('p', { class: 'place-sub', text: formatLatLon(lat, lon) });
+    sub.hidden = true;
+    if (area.kind === 'square') {
+      const box = geohashBounds(geohash(lon, lat, area.precision));
+      const kmNS = Math.round((box.north - box.south) * 111.3);
+      const kmEW = Math.round((box.east - box.west) * 111.3 * Math.cos((((box.south + box.north) / 2) * Math.PI) / 180)); // at the square's middle
+      where = { geometry: bboxToWkt(box) };
+      areaText = tx('the outlined square, about {0} by {1} km', kmEW, kmNS);
+      outline = box;
+    } else if (area.kind === 'gadm') {
+      where = { gadmGid: area.id };
+      areaText = label ?? area.id;
+      const level = (area.id.match(/\./g) ?? []).length;
+      api.gbifRegion(area.id, signal).then((r) => {
+        if (t !== this.token) return;
+        title.textContent = r.name;
+        sub.textContent = [r.type && tx(r.type), ...r.higher.slice().reverse()].filter(Boolean).join(', ');
+        sub.hidden = !sub.textContent;
+      }).catch(() => {});
+      api.regionOutline(lat, lon, level, signal).then((g) => {
+        if (t !== this.token || !g) return;
+        const rings = outerRings(g, 12, 1200);
+        const b = ringsBox(rings);
+        if (this.place) this.place.outline = rings;
+        this.host.showSquare(rings);
+        if (b) this.host.fitBox([b.west, b.south, b.east, b.north]);
+      });
+    } else {
+      where = { geometry: ringsToWkt(area.rings) ?? '' };
+      areaText = tx('the outlined area, about {0} km²', fmt(Math.round(ringsAreaKm2(area.rings))));
+      outline = area.rings;
+      if (!label) title.textContent = tx('Your area');
+    }
+    this.place = { lat, lon, area, label, outline: outline ?? undefined };
+    this.host.showSquare(outline);
 
     const nav = from ? h('button', { class: 'back', text: tx('Back to {0}', from.name), on: { click: () => this.showSpecies(from.id) } }) : null;
-    const title = h('h2', { class: 'place-title', text: formatLatLon(lat, lon) });
-    const kmNS = Math.round((box.north - box.south) * 111.3);
-    const kmEW = Math.round((box.east - box.west) * 111.3 * Math.cos((((box.south + box.north) / 2) * Math.PI) / 180)); // at the square's middle
-    const sub = h('p', { class: 'place-sub', text: formatLatLon(lat, lon) });
-    const area = tx('the outlined square, about {0} by {1} km', kmEW, kmNS);
+    const areaRow = this.areaChooser(lat, lon, area, signal, t);
+    const pageLink = h('p', { class: 'country-link', attrs: { hidden: '' } });
     const summary = h('p', { class: 'summary', text: tx('Finding animals recorded here…') });
-    this.body.append(...[nav, h('header', { class: 'place-head' }, title, sub), summary].filter((x): x is HTMLElement => !!x));
-    sub.hidden = true;
-    api.placeName(lat, lon, this.lang, signal).then((n) => {
-      if (!n || t !== this.token) return;
-      title.textContent = n.name;
-      sub.hidden = false;
-    });
+    this.body.append(...[nav, h('header', { class: 'place-head' }, title, sub), areaRow, pageLink, summary].filter((x): x is HTMLElement => !!x));
+    if (area.kind !== 'gadm') {
+      api.placeName(lat, lon, this.lang, signal).then(async (n) => {
+        if (!n || t !== this.token) return;
+        if (area.kind === 'square' || label) { if (!label) title.textContent = n.name; else sub.textContent = n.name; sub.hidden = false; }
+        if (n.cc) this.linkCountry(pageLink, n.cc, n.name.split(', ').at(-1) ?? n.cc);
+      });
+    } else if (/^[A-Z]{3}$/.test(area.id)) {
+      api.gbifRegion(area.id, signal).then(() => api.placeName(lat, lon, this.lang, signal)).then((n) => { if (n?.cc && t === this.token) this.linkCountry(pageLink, n.cc, n.name.split(', ').at(-1) ?? n.cc); }).catch(() => {});
+    }
 
     const tell = (n: number, rec: number) => {
-      summary.textContent = tx('{0} of animals recorded in {1}, from {2} records.', tn(n, '{0} species', '{0} species'), area, fmt(rec));
+      summary.textContent = tx('{0} of animals recorded in {1}, from {2} records.', tn(n, '{0} species', '{0} species'), area.kind === 'gadm' ? title.textContent ?? areaText : areaText, fmt(rec));
     };
     // The all-animals answer comes first: the count shows while the kinds are still sorting.
     const sorting = h('div', { class: 'sorting' },
@@ -134,27 +177,27 @@ export class Panel {
 
     let list: Taxon[], records: number, cut: GroupId[];
     try {
-      const r = await api.gbifChecklist(wkt, signal, early);
+      const r = await api.gbifChecklist(where, signal, early);
       list = rankSpecies(r.list); records = r.records; cut = r.cut;
     } catch (e) {
       if (t !== this.token) return;
       sorting.remove();
       summary.textContent = tx('The species list did not load. GBIF may be busy; try the same spot again in a moment.');
       summary.classList.add('error');
-      this.body.append(h('button', { class: 'btn', text: tx('Try again'), on: { click: () => this.showPlace(lat, lon) } }));
+      this.body.append(h('button', { class: 'btn', text: tx('Try again'), on: { click: () => this.showPlace(lat, lon, area, label) } }));
       console.warn(e);
       return;
     }
     if (t !== this.token) return;
     if (!list.length) {
-      summary.textContent = tx('Nobody has recorded an animal in this square yet. Switch on "Where people have looked" to find well-studied ground.');
+      summary.textContent = area.kind === 'square' ? tx('Nobody has recorded an animal in this square yet. Switch on "Where people have looked" to find well-studied ground.') : tx('Nobody has recorded an animal in this area yet.');
       return;
     }
     sorting.remove();
     tell(list.length, records);
-    const survey = this.body.appendChild(this.surveyBox(list, cut, wkt, signal, t));
+    const survey = this.body.appendChild(this.surveyBox(list, cut, where, signal, t));
     if (cut.length) survey.before(h('p', { class: 'fine', text: tx('{0}: more than 3,000 species on record here; the list shows the 3,000 most recorded.', cut.map((g) => GROUP_LABEL[g]).join(', ')) }));
-    if (records < FEW_RECORDS) this.body.append(h('p', { class: 'callout', text: tx('Few people have looked here. Most of the animals in this square have never been recorded, so this list is only a start.') }));
+    if (records < FEW_RECORDS && area.kind === 'square') this.body.append(h('p', { class: 'callout', text: tx('Few people have looked here. Most of the animals in this square have never been recorded, so this list is only a start.') }));
 
     const counts = countByGroup(list);
     let mixed = interleaveGroups(list);
@@ -164,13 +207,16 @@ export class Panel {
     const more = h('button', { class: 'btn more', text: tx('Show more') });
     // find in this list, and threatened only: both narrow whatever the kind chips show
     let query = '', onlyThreat = false, threat: Map<number, string> | null = null, looking = 0;
+    let onlyHere = false, share: Map<number, number> | null = null;
     const find = h('input', { class: 'list-find', attrs: { type: 'search', placeholder: tx('Find in this list'), 'aria-label': tx('Find an animal in this list'), autocomplete: 'off', spellcheck: 'false' } }) as HTMLInputElement;
     const threatBtn = h('button', { class: 'chip threat', attrs: { 'aria-pressed': 'false' }, text: tx('Threatened only') });
+    const hereBtn = h('button', { class: 'chip here', attrs: { 'aria-pressed': 'false', title: tx('Species with at least half of all their GBIF records from this area') }, text: tx('Mostly found here') });
     const listNote = h('p', { class: 'fine list-note', attrs: { 'aria-live': 'polite' } });
     const nameOf = (x: Taxon) => { const k = this.known.get(x.key); return `${k?.name ?? ''} ${k?.sci ?? ''}`.toLowerCase(); };
     const base = () => {
       let shown = active === 'all' ? mixed : list.filter((x) => x.group === active);
       if (onlyThreat && threat) shown = shown.filter((x) => threat!.has(x.key));
+      if (onlyHere && share) shown = shown.filter((x) => (share!.get(x.key) ?? 0) >= HERE_SHARE && x.records >= 3).sort((a, b) => share!.get(b.key)! - share!.get(a.key)! || b.records - a.records);
       if (query) shown = shown.filter((x) => nameOf(x).includes(query));
       return shown;
     };
@@ -197,7 +243,7 @@ export class Panel {
       threatBtn.setAttribute('aria-pressed', String(onlyThreat));
       if (onlyThreat && !threat) {
         listNote.textContent = tx('Finding the threatened animals here…');
-        threat = await api.gbifThreatenedIn(wkt, signal).catch(() => null);
+        threat = await api.gbifThreatenedIn(where, signal).catch(() => null);
         if (t !== this.token) return;
         if (!threat) { listNote.textContent = tx('The Red List did not load; try again.'); onlyThreat = false; threatBtn.setAttribute('aria-pressed', 'false'); return; }
         for (const [k, c] of threat) this.red.set(k, c);
@@ -205,8 +251,23 @@ export class Panel {
       }
       render();
     });
+    hereBtn.addEventListener('click', async () => {
+      onlyHere = !onlyHere;
+      hereBtn.setAttribute('aria-pressed', String(onlyHere));
+      if (onlyHere && !share) {
+        const keys = list.map((x) => x.key);
+        const global = await api.gbifGlobalCounts(keys, signal, (n) => { if (t === this.token) listNote.textContent = tx('Counting their records worldwide: {0} of {1}…', fmt(n), fmt(keys.length)); }).catch(() => null);
+        if (t !== this.token) return;
+        if (!global) { listNote.textContent = tx('The worldwide counts did not load; try again.'); onlyHere = false; hereBtn.setAttribute('aria-pressed', 'false'); return; }
+        share = new Map(list.map((x) => [x.key, Math.min(1, x.records / Math.max(1, global.get(x.key) ?? x.records))]));
+        this.share = share;
+        listNote.textContent = '';
+      }
+      render();
+    });
     const render = () => {
       const shown = base();
+      if (onlyHere && share) listNote.textContent = tx('{0} with at least half of all their records worldwide from here: found mostly here, or recorded mostly here.', tn(shown.length, '{0} species', '{0} species'));
       if (onlyThreat && threat) listNote.textContent = tx('{0} (IUCN: critically endangered, endangered or vulnerable).', tn(shown.length, '{0} threatened species', '{0} threatened species'));
       grid.replaceChildren();
       if (!shown.length) grid.append(h('li', { class: 'mosaic-empty', text: query ? tx('No animal in this list matches. Names are still being looked up for some.') : tx('None here.') }));
@@ -254,14 +315,15 @@ export class Panel {
       csv.textContent = label;
       csv.disabled = false;
       if (signal.aborted) return;
-      const rows = [['gbif_key', 'scientific_name', 'common_name', 'group', 'records_in_square', 'gbif_url'],
+      const rows = [['gbif_key', 'scientific_name', 'common_name', 'group', 'records_in_area', 'gbif_url'],
         ...list.map((x) => [x.key, this.known.get(x.key)?.sci ?? '', this.known.get(x.key)?.name ?? '', GROUPS.find((g) => g.id === x.group)!.label, x.records, `https://www.gbif.org/species/${x.key}`])];
-      download(`fauna-${lat.toFixed(2)}_${lon.toFixed(2)}.csv`, toCsv(rows), 'text/csv');
+      download(`fauna-${area.kind === 'gadm' ? area.id : `${lat.toFixed(2)}_${lon.toFixed(2)}`}.csv`, toCsv(rows), 'text/csv');
     });
-    this.body.append(h('div', { class: 'list-tools' }, find, threatBtn), listNote, chips, grid, more,
+    this.share = null;
+    this.body.append(h('div', { class: 'list-tools' }, find, threatBtn, hereBtn), listNote, chips, grid, more,
       h('p', { class: 'fine', text: tx('The mixed view takes each kind in turn and leads with species that have a photo; insects, spiders and worms take a turn less often, because they would fill the screen. Record counts reflect where people looked and what they looked for, not only what is common.') }),
       h('div', { class: 'btn-row export' }, csv),
-      h('p', { class: 'fine cite', text: tx('Cite: ') + `GBIF.org (${new Date().toISOString().slice(0, 10)}) GBIF Occurrence Search, Animalia, ${wkt}, https://www.gbif.org` }));
+      h('p', { class: 'fine cite', text: tx('Cite: ') + `GBIF.org (${new Date().toISOString().slice(0, 10)}) GBIF Occurrence Search, Animalia, ${Object.entries(where).map(([k, v]) => `${k}=${v}`).join(', ')}, https://www.gbif.org` }));
     more.hidden = true;
 
     const head = mixed.slice(0, PREFETCH);
@@ -276,9 +338,45 @@ export class Panel {
     render();
   }
 
+  /** Which area the list covers: a smaller or larger square around the point, the district, province or country it
+   *  lies in (GADM, from GBIF's geocoder), or an area the reader draws. */
+  private areaChooser(lat: number, lon: number, area: AreaRef, signal: AbortSignal, t: number): HTMLElement {
+    const row = h('div', { class: 'area-row', attrs: { role: 'group', 'aria-label': tx('Area') } });
+    const opt = (text: string, ref: AreaRef | 'draw', on: boolean, title?: string) => {
+      const b = h('button', { class: `chip area${ref === 'draw' ? ' draw' : ''}`, text, attrs: { 'aria-pressed': String(on), ...(title ? { title } : {}) } });
+      b.addEventListener('click', async () => {
+        if (ref !== 'draw') { if (!on) this.showPlace(lat, lon, ref); return; }
+        const ring = await this.host.drawArea();
+        if (!ring) return;
+        const b2 = ringsBox([ring])!;
+        this.showPlace((b2.south + b2.north) / 2, (b2.west + b2.east) / 2, { kind: 'shape', rings: [ring] });
+      });
+      return b;
+    };
+    const sq = (p: 3 | 4) => area.kind === 'square' && area.precision === p;
+    row.append(h('span', { class: 'area-lbl', text: tx('Area') }),
+      opt(tx('Square, 40 km'), { kind: 'square', precision: 4 }, sq(4)),
+      opt(tx('Square, 150 km'), { kind: 'square', precision: 3 }, sq(3)));
+    const regions = h('span', { class: 'area-regions' });
+    row.append(regions, opt(tx('Draw an area'), 'draw', area.kind === 'shape', tx('Click the globe to set corners, double-click to finish')));
+    api.gbifRegions(lat, lon, signal).then((rs) => {
+      if (t !== this.token) return;
+      for (const r of rs.slice().reverse()) regions.append(opt(r.name, { kind: 'gadm', id: r.id }, area.kind === 'gadm' && area.id === r.id, tx('The whole of {0}, as GBIF draws its borders (GADM)', r.name)));
+    }).catch(() => {});
+    return row;
+  }
+
+  /** A link to the country's own page, when the site has one. */
+  private async linkCountry(el: HTMLElement, cc: string, name: string) {
+    const slug = (await api.placePages(import.meta.env.BASE_URL))[cc];
+    if (!slug) return;
+    el.replaceChildren(h('a', { text: tx('{0}: the country page, with its best-known animals', name), attrs: { href: `${import.meta.env.BASE_URL}places/${slug}/` } }));
+    el.hidden = false;
+  }
+
   /** How well a square is known, one kind of animal at a time (Chao1 and sample coverage only make sense within a
    *  group that is recorded with similar effort), and the years of its first and last record. */
-  private surveyBox(list: Taxon[], cut: GroupId[], wkt: string, signal: AbortSignal, t: number): HTMLElement {
+  private surveyBox(list: Taxon[], cut: GroupId[], where: api.Where, signal: AbortSignal, t: number): HTMLElement {
     const box = h('div', { class: 'survey' });
     const rows = GROUPS.filter((g) => g.id !== 'other' && !cut.includes(g.id))
       .map((g) => ({ g, c: chao1(list.filter((x) => x.group === g.id).map((x) => x.records)) }))
@@ -305,7 +403,7 @@ export class Panel {
       }
       box.append(table, h('p', { class: 'fine', text: tx('Per kind of animal: the species recorded and a Chao1 lower bound for how many live here (95 % interval), from how many species were recorded only once or twice. Below 90 % sample coverage the records are too patchy to judge. Records stand in for individuals, so read it as a guide to how well the ground is known, not a count.') }));
     }
-    api.gbifFacet({ geometry: wkt }, 'year', 400, signal).then((ys) => {
+    api.gbifFacet(where, 'year', 400, signal).then((ys) => {
       if (t !== this.token) return;
       const years = ys.map((y) => Number(y.name)).filter((y) => y >= 1758 && y <= new Date().getUTCFullYear()); // 1758: Linnaeus; 1700 is a placeholder
       if (!years.length) return;
@@ -364,7 +462,9 @@ export class Panel {
       const photo = h('div', { class: `tile-photo g-${sp.group}`, attrs: { 'data-photo': 'loading' } },
         silhouette(sp.group), h('span', { class: 'tile-group', text: GROUP_LABEL[sp.group] }));
       const btn = h('button', { class: 'tile', attrs: { 'aria-label': GROUP_LABEL[sp.group] } }, photo, name, latin,
-        h('span', { class: 'tile-n', text: tn(sp.records, '{0} record', '{0} records') }));
+        h('span', { class: 'tile-n', text: this.share?.has(sp.key) && this.share.get(sp.key)! >= HERE_SHARE
+          ? tx('{0}, {1} % of all its records', tn(sp.records, '{0} record', '{0} records'), Math.round(this.share.get(sp.key)! * 100))
+          : tn(sp.records, '{0} record', '{0} records') }));
       btn.addEventListener('click', () => this.showSpecies(sp.key, true));
       const li = h('li', {}, btn);
       tiles.set(sp.key, li);
@@ -411,14 +511,14 @@ export class Panel {
     const back = fromPlace && this.place ? { ...this.place } : null;
     const { t, signal } = this.open();
     this.species = { id, name: tx('this species') };
-    this.host.setHash({ at: back ?? undefined, sp: id });
+    this.host.setHash({ at: back ? { lat: back.lat, lon: back.lon } : undefined, area: back?.area, sp: id });
     if (!back) { this.place = null; this.host.showSquare(null); }
-    else this.host.showSquare(geohashBounds(geohash(back.lon, back.lat, 3)));
+    else this.host.showSquare(back.outline ?? (back.area?.kind === 'shape' ? back.area.rings : back.area?.kind === 'gadm' ? null : geohashBounds(geohash(back.lon, back.lat, back.area?.kind === 'square' ? back.area.precision : 3))));
     this.host.showRanges([{ key: id, mode: 'all' }]);
     // from a place the camera stays there; otherwise fly to where the records are
     if (!back) api.gbifCentre(id, signal).then((c) => { if (c && t === this.token) this.host.flyTo(c.lon, c.lat, 3); });
 
-    const nav = back ? h('button', { class: 'back', text: tx('Back to this place'), on: { click: () => this.showPlace(back.lat, back.lon) } }) : null;
+    const nav = back ? h('button', { class: 'back', text: tx('Back to this place'), on: { click: () => this.showPlace(back.lat, back.lon, back.area, back.label) } }) : null;
     const figure = h('figure', { class: 'hero' });
     const name = h('h2', { class: 'sp-name', text: '' });
     const latin = h('p', { class: 'latin big', text: '' });

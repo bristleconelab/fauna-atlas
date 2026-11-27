@@ -4,7 +4,7 @@ import * as maplibregl from 'maplibre-gl';
 import type { ExpressionSpecification, GeoJSONSource, LayerSpecification, MapMouseEvent, StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
-import { bboxRing, frameOf, type BBox } from './geo';
+import { bboxRing, frameOf, type BBox, type Ring } from './geo';
 import { gbifAdhocTiles, gbifTiles } from './api';
 import { capped, fadePolarOverlays, registerPoleCaps } from './polecap';
 import { h, fmt } from './dom';
@@ -99,11 +99,16 @@ function style(lang: string): StyleSpecification {
       micoSites: { type: 'geojson', data: EMPTY },
       tracks: { type: 'geojson', data: EMPTY },
       heads: { type: 'geojson', data: EMPTY },
+      draw: { type: 'geojson', data: EMPTY },
     },
     layers: [
       { id: 'bg', type: 'background', paint: { 'background-color': COLORS.abyss } },
       { id: 'earth', type: 'raster', source: 'earth', paint: { 'raster-saturation': -0.15, 'raster-contrast': 0.05 } },
       { id: 's2', type: 'raster', source: 's2', minzoom: 6, paint: { 'raster-opacity': ['interpolate', ['linear'], ['zoom'], 6, 0, 7.5, 1], 'raster-saturation': -0.1 } },
+      // protected areas from OpenStreetMap (OpenMapTiles "park": national parks, nature reserves, protected areas); off
+      // until switched on
+      { id: 'parks-fill', type: 'fill', source: 'omt', 'source-layer': 'park', layout: { visibility: 'none' }, paint: { 'fill-color': '#7fe3a0', 'fill-opacity': 0.16 } },
+      { id: 'parks-line', type: 'line', source: 'omt', 'source-layer': 'park', layout: { visibility: 'none' }, paint: { 'line-color': '#9ff0b8', 'line-width': ['interpolate', ['linear'], ['zoom'], 3, 0.5, 8, 1.4], 'line-opacity': 0.8 } },
       ...labelLayers(lang),
       {
         id: 'mico-routes', type: 'line', source: 'micoRoutes', layout: { 'line-cap': 'round' }, filter: ['==', ['get', 'tracked'], 1],
@@ -139,7 +144,10 @@ function style(lang: string): StyleSpecification {
       },
       // where two compared species are both recorded
       { id: 'overlap-fill', type: 'fill', source: 'overlap', paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.55 } },
+      { id: 'square-fill', type: 'fill', source: 'square', filter: ['==', ['geometry-type'], 'Polygon'], paint: { 'fill-color': COLORS.foam, 'fill-opacity': 0.06 } },
       { id: 'square', type: 'line', source: 'square', paint: { 'line-color': COLORS.foam, 'line-width': 2.5 } },
+      { id: 'draw-line', type: 'line', source: 'draw', paint: { 'line-color': '#f26430', 'line-width': 2.5, 'line-dasharray': [2, 1] } },
+      { id: 'draw-pts', type: 'circle', source: 'draw', filter: ['==', ['geometry-type'], 'Point'], paint: { 'circle-radius': 5, 'circle-color': '#f26430', 'circle-stroke-color': '#fff', 'circle-stroke-width': 1.5 } },
     ],
   };
 }
@@ -147,6 +155,8 @@ function style(lang: string): StyleSpecification {
 maplibregl.setWorkerUrl(workerUrl);
 registerPoleCaps();
 
+/** OpenMapTiles park classes, in plain words. */
+const PARK_KIND: Record<string, string> = { national_park: 'National park', nature_reserve: 'Nature reserve', protected_area: 'Protected area' };
 /** Layers a click asks about before it falls through to "life here". */
 const PICKABLE = ['heads', 'tracks', 'mico-sites', 'mico-routes', 'mico-links'];
 
@@ -190,7 +200,17 @@ export class Globe {
    *  calls fn, which opens "life here". */
   onClick(fn: (lon: number, lat: number) => void) {
     this.map.on('click', (e: MapMouseEvent) => {
+      if (this.drawing) { this.drawing.add([e.lngLat.lng, e.lngLat.lat]); return; }
       const f = this.pick(e);
+      if (f?.layer.id === 'parks-fill' && this.onPark) {
+        const p = f.properties ?? {}, nm = String(p['name:en'] ?? p.name ?? '');
+        const { lng, lat } = e.lngLat;
+        const btn = h('button', { class: 'btn small', text: t('Animals recorded here') });
+        btn.addEventListener('click', () => { this.popup.remove(); this.onPark!(nm, lat, lng); });
+        this.popup.setLngLat(e.lngLat).setDOMContent(h('div', { class: 'pop' }, h('strong', { text: nm || t('Protected area') }),
+          h('span', { text: t(PARK_KIND[String(p.class)] ?? 'Protected area') }), btn)).addTo(this.map);
+        return;
+      }
       if (f) {
         const el = popupContent(f.layer.id, f.properties ?? {});
         if (el) { this.popup.setLngLat(e.lngLat).setDOMContent(el).addTo(this.map); return; }
@@ -199,8 +219,56 @@ export class Globe {
     });
   }
 
+  /** A click on a protected area (with the layer on) offers its animal list: name and where it was clicked. */
+  onPark?: (name: string, lat: number, lon: number) => void;
+  private parksOn = false;
+  async setParks(on: boolean) {
+    await this.ready;
+    this.parksOn = on;
+    for (const id of ['parks-fill', 'parks-line']) this.map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+  }
+
+  /** Draw an area: each click adds a corner, a double click or Done closes it; Escape or Cancel gives null. */
+  private drawing: { add: (p: [number, number]) => void } | null = null;
+  async draw(bar: HTMLElement): Promise<Ring | null> {
+    await this.ready;
+    const pts: [number, number][] = [];
+    const src = this.map.getSource('draw') as GeoJSONSource;
+    const paint = () => src.setData({ type: 'FeatureCollection', features: [
+      ...(pts.length > 1 ? [{ type: 'Feature' as const, properties: {}, geometry: { type: 'LineString' as const, coordinates: pts.length > 2 ? [...pts, pts[0]] : pts } }] : []),
+      ...pts.map((p) => ({ type: 'Feature' as const, properties: {}, geometry: { type: 'Point' as const, coordinates: p } })),
+    ] });
+    this.map.doubleClickZoom.disable();
+    this.map.getCanvas().style.cursor = 'crosshair';
+    bar.hidden = false;
+    const done = bar.querySelector<HTMLButtonElement>('[data-act=done]')!, cancel = bar.querySelector<HTMLButtonElement>('[data-act=cancel]')!;
+    const note = bar.querySelector<HTMLElement>('.draw-note')!;
+    const count = () => { done.disabled = pts.length < 3; note.textContent = pts.length < 3 ? t('Click the globe to set the corners of your area.') : tn(pts.length, '{0} corner; double-click or press Done to finish.', '{0} corners; double-click or press Done to finish.'); };
+    count();
+    return new Promise((resolve) => {
+      const finish = (ok: boolean) => {
+        this.drawing = null;
+        this.map.off('dblclick', dbl);
+        document.removeEventListener('keydown', key);
+        done.onclick = cancel.onclick = null;
+        bar.hidden = true;
+        this.map.getCanvas().style.cursor = '';
+        src.setData(EMPTY);
+        setTimeout(() => this.map.doubleClickZoom.enable(), 300);
+        resolve(ok && pts.length >= 3 ? pts.slice() : null);
+      };
+      const dbl = (e: MapMouseEvent) => { e.preventDefault(); if (pts.length >= 3) finish(true); };
+      const key = (e: KeyboardEvent) => { if (e.key === 'Escape') finish(false); if (e.key === 'Enter' && pts.length >= 3) finish(true); if (e.key === 'Backspace' && pts.length) { pts.pop(); paint(); count(); } };
+      this.drawing = { add: (p) => { if (pts.length < 60) { pts.push(p); paint(); count(); } } };
+      this.map.on('dblclick', dbl);
+      document.addEventListener('keydown', key);
+      done.onclick = () => finish(true);
+      cancel.onclick = () => finish(false);
+    });
+  }
+
   private pick(e: MapMouseEvent) {
-    const layers = PICKABLE.filter((id) => this.map.getLayer(id));
+    const layers = [...PICKABLE, ...(this.parksOn ? ['parks-fill'] : [])].filter((id) => this.map.getLayer(id));
     const r = 6;
     const hits = this.map.queryRenderedFeatures([[e.point.x - r, e.point.y - r], [e.point.x + r, e.point.y + r]], { layers });
     return hits[0] ?? null;
@@ -212,12 +280,12 @@ export class Globe {
     this.hoverPop.remove();
   }
 
-  async showSquare(b: BBox | null) {
+  /** The area the panel lists: a square (a box) or a region or drawn shape (rings); null clears it. */
+  async showSquare(b: BBox | Ring[] | null) {
     await this.ready;
-    const data: GeoJSON.FeatureCollection = b
-      ? { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: bboxRing(b) } }] }
-      : EMPTY;
-    (this.map.getSource('square') as GeoJSONSource).setData(data);
+    const rings = !b ? [] : Array.isArray(b) ? b.map((r) => (r[0][0] === r.at(-1)![0] && r[0][1] === r.at(-1)![1] ? r : [...r, r[0]])) : [bboxRing(b)];
+    const data: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: rings.map((r) => ({ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [r] } })) };
+    (this.map.getSource('square') as GeoJSONSource).setData(rings.length ? data : EMPTY);
   }
 
   /** Species ranges as GBIF square-grid tiles: one entry each (all years, before 2000, since 2000, or species a/b).

@@ -142,10 +142,12 @@ export const qs = (o: Params) => {
 export interface Checklist { list: Taxon[]; records: number; truncated: boolean; cut: Taxon['group'][] }
 /** `onAll` gets the all-animals answer as soon as it arrives (every species as group "other"): the count, records and
  *  Chao1 need nothing more, so the panel can show them while the per-group requests are still in GBIF's queue. */
-export async function gbifChecklist(wkt: string, signal?: AbortSignal, onAll?: (c: Checklist) => void): Promise<Checklist> {
+/** `where`: the area as GBIF parameters ({ geometry: WKT } or { gadmGid: 'KEN.30_1' }). */
+export type Where = Params;
+export async function gbifChecklist(where: Where, signal?: AbortSignal, onAll?: (c: Checklist) => void): Promise<Checklist> {
   const LIMIT = 3000;
   const ask = (filter: Params) => getJSON<Search>(`${GBIF}/occurrence/search?${qs({
-    ...CLEAN, geometry: wkt, limit: 0, facet: 'speciesKey', facetLimit: LIMIT, ...filter })}`, { signal, timeoutMs: 40000 });
+    ...CLEAN, ...where, limit: 0, facet: 'speciesKey', facetLimit: LIMIT, ...filter })}`, { signal, timeoutMs: 40000 });
   // One request for all animals, with record counts per class and phylum: GBIF limits the request rate, so the
   // per-group requests go out only for the kinds of animal that are there (planGroups). Birds and mammals are on
   // record nearly everywhere, land and sea, so they go out with it rather than after it.
@@ -194,13 +196,60 @@ export async function gbifVertical(key: number, signal?: AbortSignal): Promise<V
   return { zones, values: null };
 }
 /** Threatened species (IUCN CR, EN, VU) recorded inside a polygon, with their category: three facet requests. */
-export async function gbifThreatenedIn(wkt: string, signal?: AbortSignal): Promise<Map<number, string>> {
+export async function gbifThreatenedIn(where: Where, signal?: AbortSignal): Promise<Map<number, string>> {
   const out = new Map<number, string>();
   const cats = ['CR', 'EN', 'VU'];
-  const parts = await Promise.all(cats.map((cat) => gbifFacet({ geometry: wkt, iucnRedListCategory: cat }, 'speciesKey', 3000, signal)));
+  const parts = await Promise.all(cats.map((cat) => gbifFacet({ ...where, iucnRedListCategory: cat }, 'speciesKey', 3000, signal)));
   parts.forEach((f, i) => { for (const x of f) if (!out.has(Number(x.name))) out.set(Number(x.name), cats[i]); });
   return out;
 }
+/** Records of each species worldwide (same clean filter as the lists), for "mostly found here": one facet request per
+ *  250 species (GBIF reads repeated taxonKey as OR; about 4.5 kB of URL), so a list of 2,000 needs 8. */
+export async function gbifGlobalCounts(keys: number[], signal?: AbortSignal, onPart?: (done: number) => void): Promise<Map<number, number>> {
+  const out = new Map<number, number>();
+  for (let i = 0; i < keys.length; i += 250) {
+    if (signal?.aborted) break;
+    const part = keys.slice(i, i + 250);
+    const f = await gbifFacet({ taxonKey: part }, 'speciesKey', part.length + 10, signal);
+    for (const x of f) out.set(Number(x.name), x.count);
+    onPart?.(Math.min(i + 250, keys.length));
+  }
+  return out;
+}
+
+/** GADM regions a point lies in (country, province, district), from GBIF's own geocoder: the ids GBIF filters by. */
+export interface Region { id: string; level: number; name: string }
+export async function gbifRegions(lat: number, lon: number, signal?: AbortSignal): Promise<Region[]> {
+  const r = await getJSON<{ type: string; id: string; title: string; distance: number }[]>(`${GBIF}/geocode/reverse?${q({ lat: lat.toFixed(4), lng: lon.toFixed(4) })}`, { signal, timeoutMs: 15000 });
+  const out: Region[] = [];
+  for (const level of [0, 1, 2]) {
+    const x = r.find((g) => g.type === `GADM${level}` && g.distance === 0);
+    if (x) out.push({ id: x.id, level, name: x.title });
+  }
+  return out;
+}
+export async function gbifRegion(id: string, signal?: AbortSignal): Promise<Region & { type?: string; higher: string[] }> {
+  const r = await getJSON<{ id: string; name: string; gadmLevel: number; englishType?: string[]; higherRegions?: { name: string }[] }>(`${GBIF}/geocode/gadm/${encodeURIComponent(id)}`, { signal, timeoutMs: 15000 });
+  return { id: r.id, level: r.gadmLevel, name: r.name, type: r.englishType?.[0], higher: (r.higherRegions ?? []).map((h) => h.name) };
+}
+
+/** Outline of the region around a point at a GADM level, for the map only (GBIF filters by the GADM id itself):
+ *  OpenStreetMap's boundary from Nominatim, simplified. Close to GADM's, not identical. */
+export async function regionOutline(lat: number, lon: number, level: number, signal?: AbortSignal): Promise<GeoJSON.Geometry | null> {
+  const zoom = [3, 5, 8][level] ?? 8;
+  const r = await getJSON<{ geojson?: GeoJSON.Geometry }>(`https://nominatim.openstreetmap.org/reverse?${q({ format: 'jsonv2', lat: lat.toFixed(4), lon: lon.toFixed(4), zoom, polygon_geojson: 1, polygon_threshold: level === 0 ? 0.02 : 0.005 })}`, { signal, timeoutMs: 15000 }).catch(() => null);
+  return r?.geojson && (r.geojson.type === 'Polygon' || r.geojson.type === 'MultiPolygon') ? r.geojson : null;
+}
+
+/** A protected area's whole outline by its name, near where it was clicked (the map tiles hold only pieces of it). */
+export async function parkOutline(name: string, lat: number, lon: number, signal?: AbortSignal): Promise<GeoJSON.Geometry | null> {
+  const d = 3;
+  const r = await getJSON<{ geojson?: GeoJSON.Geometry; class?: string; type?: string }[]>(`https://nominatim.openstreetmap.org/search?${q({ format: 'jsonv2', q: name, polygon_geojson: 1, polygon_threshold: 0.002, limit: 5, viewbox: `${lon - d},${lat + d},${lon + d},${lat - d}`, bounded: 1 })}`, { signal, timeoutMs: 15000 }).catch(() => []);
+  const hit = r.find((x) => (x.geojson?.type === 'Polygon' || x.geojson?.type === 'MultiPolygon') && /protected_area|national_park|nature_reserve|park/.test(`${x.class} ${x.type}`))
+    ?? r.find((x) => x.geojson?.type === 'Polygon' || x.geojson?.type === 'MultiPolygon');
+  return hit?.geojson ?? null;
+}
+
 /** Facet counts (month, year...) for any filter. */
 export async function gbifFacet(filter: Params, facet: string, limit = 400, signal?: AbortSignal): Promise<{ name: string; count: number }[]> {
   const r = await getJSON<Search>(`${GBIF}/occurrence/search?${qs({ ...CLEAN, limit: 0, facet, facetLimit: limit, ...filter })}`, { signal });
@@ -372,6 +421,12 @@ export function tagTracks(base: string, key: number): Promise<import('./tracks')
 export interface MicoMeta { common: string; scientific: string; group: string; sites: number; routes: number; tracked: number }
 export interface MicoIndex { source: string; species: Record<string, MicoMeta> }
 export interface MicoSpecies { common: string; scientific: string; group: string; sites: [number, number, number, string][]; routes: [number, number, number, number, number, number][] }
+/** Country pages the site has: ISO 3166-1 alpha-2 -> slug (pages/build.ts writes data/places.json). */
+let placePagesP: Promise<Record<string, string>> | null = null;
+export function placePages(base: string): Promise<Record<string, string>> {
+  placePagesP ??= fetch(`${base}data/places.json`).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+  return placePagesP;
+}
 export function micoIndex(base: string): Promise<MicoIndex> { return getJSON(`${base}data/mico/index.json`); }
 export function micoSpecies(base: string, id: number): Promise<MicoSpecies> { return getJSON(`${base}data/mico/${id}.json`); }
 
@@ -590,7 +645,7 @@ export async function searchPlaces(text: string, lang: string, signal?: AbortSig
 }
 
 /** Name of a clicked point: the sea from Marine Regions, else district, region and country from Nominatim. */
-export async function placeName(lat: number, lon: number, lang: string, signal?: AbortSignal): Promise<{ name: string; sea: boolean } | null> {
+export async function placeName(lat: number, lon: number, lang: string, signal?: AbortSignal): Promise<{ name: string; sea: boolean; cc?: string } | null> {
   // land first: Marine Regions also returns lakes whose outline box reaches far inland (the Serengeti came back as
   // "Victoria, Lake"); Nominatim has no address at open sea, and then the sea name is the answer
   const r = await getJSON<{ address?: Record<string, string> }>(`https://nominatim.openstreetmap.org/reverse?${q({ format: 'jsonv2', lat: lat.toFixed(4), lon: lon.toFixed(4), zoom: 8, 'accept-language': lang === 'en' ? 'en' : `${lang},en` })}`,
@@ -601,5 +656,5 @@ export async function placeName(lat: number, lon: number, lang: string, signal?:
     return sea ? { name: sea.name, sea: !sea.land } : null;
   }
   const parts = [a.county ?? a.city ?? a.town ?? a.state_district, a.state, a.country].filter(Boolean);
-  return { name: [...new Set(parts)].join(', '), sea: false };
+  return { name: [...new Set(parts)].join(', '), sea: false, cc: a.country_code?.toUpperCase() };
 }

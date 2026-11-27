@@ -130,3 +130,17 @@ describe('species name from Wikidata', () => {
     expect(pickName({ articleEn: v('https://en.wikipedia.org/wiki/Brant_(goose)') }, 'Branta bernicla')).toBe('Brant');
   });
 });
+
+describe('areas in the link', () => {
+  it('round-trips squares, GADM regions and drawn shapes', () => {
+    for (const area of [{ kind: 'square', precision: 4 }, { kind: 'gadm', id: 'KEN.30_1' }, { kind: 'shape', rings: [[[69.1, 41.2], [69.5, 41.2], [69.5, 41.5]], [[70, 40], [71, 40], [71, 41]]] }] as import('../src/state').AreaRef[]) {
+      const s = parseHash(formatHash({ at: { lat: 41.3, lon: 69.3 }, area }));
+      expect(s.area).toEqual(area);
+    }
+    expect(formatHash({ at: { lat: 1, lon: 2 }, area: { kind: 'square', precision: 3 } })).toBe('#at=1.00,2.00');
+  });
+  it('ignores a broken area', () => {
+    expect(parseHash('#at=1,2&area=g:<script>').area).toBeUndefined();
+    expect(parseHash('#at=1,2&area=p:1,2;3').area).toBeUndefined();
+  });
+});

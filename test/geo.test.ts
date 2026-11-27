@@ -50,3 +50,30 @@ describe('great circle', () => {
     expect(greatCircle([-74, 40], [0, 51], 2)[1][1]).toBeGreaterThan(45.5);
   });
 });
+
+import { ringsToWkt, simplifyRing, outerRings, ringsAreaKm2, ringSignedArea } from '../src/geo';
+describe('shapes for GBIF', () => {
+  const cw: [number, number][] = [[0, 0], [0, 1], [1, 1], [1, 0]];
+  it('writes counter-clockwise closed polygons, one or several', () => {
+    expect(ringsToWkt([cw])).toBe('POLYGON((1 0,1 1,0 1,0 0,1 0))');
+    expect(ringsToWkt([cw, cw.map(([x, y]) => [x + 5, y] as [number, number])])).toBe('MULTIPOLYGON(((1 0,1 1,0 1,0 0,1 0)),((6 0,6 1,5 1,5 0,6 0)))');
+    expect(ringsToWkt([[[0, 0], [1, 1]]])).toBeNull();
+  });
+  it('simplifies a dense ring to the corner budget and keeps its shape', () => {
+    const circle = Array.from({ length: 2000 }, (_, i) => [Math.cos((i / 2000) * 2 * Math.PI), Math.sin((i / 2000) * 2 * Math.PI)] as [number, number]);
+    const s = simplifyRing(circle, 60);
+    expect(s.length).toBeLessThanOrEqual(60);
+    expect(s.length).toBeGreaterThan(12);
+    expect(Math.abs(ringSignedArea(s)) / Math.PI).toBeGreaterThan(0.95);
+  });
+  it('keeps the large parts of a multipolygon and drops specks', () => {
+    const sq = (x: number, size: number) => [[x, 0], [x + size, 0], [x + size, size], [x, size], [x, 0]];
+    const rings = outerRings({ type: 'MultiPolygon', coordinates: [[sq(0, 0.01)], [sq(10, 2)], [sq(20, 1)]] } as GeoJSON.MultiPolygon);
+    expect(rings).toHaveLength(2);
+    expect(Math.abs(ringSignedArea(rings[0]))).toBe(4);
+  });
+  it('measures area on the sphere: a 1° square at the equator is about 12,364 km²', () => {
+    expect(ringsAreaKm2([[[0, 0], [1, 0], [1, 1], [0, 1]]])).toBeGreaterThan(12300);
+    expect(ringsAreaKm2([[[0, 0], [1, 0], [1, 1], [0, 1]]])).toBeLessThan(12400);
+  });
+});

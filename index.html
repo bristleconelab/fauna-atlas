@@ -113,6 +113,13 @@
 
   <p id="hint" data-t>Click anywhere to see which animals live there</p>
 
+  <div id="draw-bar" class="draw-bar" hidden role="status">
+    <p class="draw-note"></p>
+    <button data-act="done" class="btn small" data-t>Done</button>
+    <button data-act="cancel" class="btn small quiet" data-t>Cancel</button>
+  </div>
+  <div id="parks-legend" class="parks-legend" hidden><span class="swatch"></span><span data-t>Protected areas (OpenStreetMap). Click one for the animals recorded in it.</span></div>
+
   <section id="tour" class="tour" hidden aria-live="polite"></section>
 
   <div class="corner">
@@ -134,6 +141,7 @@
     </div>
     <nav class="corner-buttons" aria-label="Explore" data-t-label>
       <button id="looked" class="nav-btn" aria-pressed="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span class="lbl" data-t>Where people have looked</span></button>
+      <button id="parks" class="nav-btn" aria-pressed="false"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/></svg><span class="lbl" data-t>Protected areas</span></button>
       <button id="tour-open" class="nav-btn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></svg><span class="lbl" data-t>Tour</span></button>
       <button id="near-me" class="nav-btn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg><span class="lbl" data-t>Near me</span></button>
       <button id="migrations-open" class="nav-btn"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 9c2.5-2 4.5-2 7 0s4.5 2 7 0 3-1.5 4-1.5"/><path d="M3 15c2.5-2 4.5-2 7 0s4.5 2 7 0 3-1.5 4-1.5"/></svg><span class="lbl" data-t>Sea migrations</span></button>
@@ -162,7 +170,7 @@
     <button class="about-close" aria-label="Close" data-t-label>×</button>
     <div data-l="en">
     <h2 id="about-title">About this atlas</h2>
-    <p>Fauna Atlas shows which animals people have recorded on land, in rivers and lakes, in the sea and in the air. Click a spot to see the species found within a square about 150 km across, or search for an animal or a place to see where it has been seen, how high or deep it lives, and when.</p>
+    <p>Fauna Atlas shows which animals people have recorded on land, in rivers and lakes, in the sea and in the air. Click a spot to see the species found within a square about 150 km across, or switch the area to the district, province or country, draw your own, or pick a protected area; or search for an animal or a place to see where it has been seen, how high or deep it lives, and when.</p>
     <p>A list here is a record of what was found, not a census. Most of the Earth has hardly been surveyed, and insects, spiders and worms far less than birds and mammals, so a short list usually means few people looked. Switch on <em>Where people have looked</em> to see the gaps, and where nobody has recorded an animal for ten years. GBIF coarsens the positions of species at risk from collectors and poachers; this atlas shows them as they are published.</p>
     <h3>Where the data comes from</h3>
     <ul class="sources">
@@ -180,7 +188,7 @@
     </div>
     <div data-l="uz" lang="uz">
     <h2>Atlas haqida</h2>
-    <p>Fauna Atlas odamlar quruqlikda, daryo va koʻllarda, dengizda va havoda qayd etgan hayvonlarni koʻrsatadi. Taxminan 150 km lik kvadratda topilgan turlarni koʻrish uchun biror joyni bosing yoki hayvon yoki joyni qidirib, u qayerda koʻrilgani, qanchalik balandda yoki chuqurda yashashi va qachon uchrashini biling.</p>
+    <p>Fauna Atlas odamlar quruqlikda, daryo va koʻllarda, dengizda va havoda qayd etgan hayvonlarni koʻrsatadi. Taxminan 150 km lik kvadratda topilgan turlarni koʻrish uchun biror joyni bosing (hududni tuman, viloyat yoki davlatga almashtirish, oʻzingiz chizish yoki qoʻriqxonani tanlash mumkin) yoki hayvon yoki joyni qidirib, u qayerda koʻrilgani, qanchalik balandda yoki chuqurda yashashi va qachon uchrashini biling.</p>
     <p>Bu yerdagi roʻyxat sanoq emas, topilgan narsalar yozuvi. Yerning katta qismi deyarli oʻrganilmagan, hasharotlar, oʻrgimchaklar va chuvalchanglar esa qush va sutemizuvchilardan ancha kam oʻrganilgan, shuning uchun qisqa roʻyxat odatda kam odam qaraganini bildiradi. Boʻshliqlarni va oʻn yildan beri hayvon qayd etilmagan joylarni koʻrish uchun <em>Odamlar qayerni oʻrgangan</em> qatlamini yoqing. GBIF ovchi va brakonyerlardan xavf ostidagi turlarning joylashuvini qoʻpollashtirib eʼlon qiladi; atlas ularni eʼlon qilinganidek koʻrsatadi.</p>
     <h3>Maʼlumotlar manbasi</h3>
     <ul class="sources">

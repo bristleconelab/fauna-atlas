@@ -10,6 +10,7 @@ import { Panel } from './panel';
 import { initSearch } from './search';
 import { initSheet } from './sheet';
 import { formatHash, parseHash, type ViewState } from './state';
+import { outerRings, ringsBox } from './geo';
 import { languageName, LANGS, lang, setLang, t, tn } from './i18n';
 import { initTour } from './tour';
 
@@ -71,6 +72,8 @@ const pad = () => {
 
 const panel = new Panel(panelEl, $('#panel .panel-body'), {
   showSquare: (b) => globe.showSquare(b),
+  drawArea: () => { hint.hidden = true; if (!wide()) sheet.collapse(); return globe.draw($('#draw-bar')); },
+  fitBox: (b) => globe.fitBox(b),
   showOverlap: (fc) => globe.showOverlap(fc),
   showRanges: (r) => globe.showRanges(r),
   flyTo: (lon, lat, zoom) => globe.flyTo(lon, lat, zoom),
@@ -140,6 +143,22 @@ nearBtn.addEventListener('click', () => {
       : t('Your location did not come through. Click the globe near you instead.');
   }, { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 });
 });
+
+// Protected areas: OpenStreetMap's parks and reserves; a click on one lists the animals recorded inside it
+{
+  const btn = $<HTMLButtonElement>('#parks'), lg = $('#parks-legend');
+  let on = false;
+  btn.addEventListener('click', () => { on = !on; btn.setAttribute('aria-pressed', String(on)); lg.hidden = !on; globe.setParks(on); });
+  globe.onPark = async (name, lat, lon) => {
+    hint.hidden = true;
+    const g = await api.parkOutline(name, lat, lon).catch(() => null);
+    const rings = outerRings(g, 6, 80);
+    if (!rings.length) { hint.hidden = false; hint.textContent = t('The outline of {0} was not found; showing the square around it instead.', name); panel.showPlace(lat, lon); return; }
+    const b = ringsBox(rings)!;
+    globe.fitBox([b.west, b.south, b.east, b.north]);
+    panel.showPlace(lat, lon, { kind: 'shape', rings }, name);
+  };
+}
 
 // "Where scientists have looked"
 const lookedBtn = $<HTMLButtonElement>('#looked');
@@ -307,9 +326,14 @@ const apply = (s: ViewState) => {
     if (s.sp && s.vs) { hint.hidden = true; panel.showCompare(s.sp, s.vs); }
     else if (s.sp) {
       hint.hidden = true;
-      if (s.at) { panel.rememberPlace(s.at.lat, s.at.lon); globe.flyTo(s.at.lon, s.at.lat, 3.2); }
+      if (s.at) { panel.rememberPlace(s.at.lat, s.at.lon, s.area); globe.flyTo(s.at.lon, s.at.lat, 3.2); }
       panel.showSpecies(s.sp, !!s.at);
-    } else if (s.at) { hint.hidden = true; globe.flyTo(s.at.lon, s.at.lat, 4); panel.showPlace(s.at.lat, s.at.lon); }
+    } else if (s.at) {
+      hint.hidden = true;
+      if (s.area?.kind === 'shape') { const b = ringsBox(s.area.rings)!; globe.fitBox([b.west, b.south, b.east, b.north]); }
+      else if (s.area?.kind !== 'gadm') globe.flyTo(s.at.lon, s.at.lat, 4);
+      panel.showPlace(s.at.lat, s.at.lon, s.area);
+    }
     else if (panel.isOpen) panel.close(false);
   } finally { restoring = false; }
 };
