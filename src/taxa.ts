@@ -32,21 +32,21 @@ export const FISH_ORDERS = [
  *  tuatara's Sphenodontia; crustaceans are seven classes, worms three phyla (ringed, round and flat); fish
  *  are a `taxonKey` list, which GBIF ORs across ranks, because most of them have an order but no class; the
  *  coelacanth and lungfish classes are in it too). */
-export const GROUPS: { id: GroupId; label: string; uz: string; gbif?: Filter }[] = [
-  { id: 'mammals', label: 'Mammals', uz: 'Sutemizuvchilar', gbif: { classKey: [359] } },
-  { id: 'birds', label: 'Birds', uz: 'Qushlar', gbif: { classKey: [212] } },
-  { id: 'reptiles', label: 'Reptiles', uz: 'Sudralib yuruvchilar', gbif: { classKey: [11592253, 11418114, 11493978, 11569602] } },
-  { id: 'amphibians', label: 'Frogs, toads and salamanders', uz: 'Baqalar va salamandralar', gbif: { classKey: [131] } },
-  { id: 'fish', label: 'Fish', uz: 'Baliqlar', gbif: { taxonKey: [204, 238, 119, 11881065, 11733052, 11500725, ...FISH_ORDERS] } },
-  { id: 'sharks', label: 'Sharks and rays', uz: 'Akulalar va skatlar', gbif: { classKey: [121, 120] } },
-  { id: 'insects', label: 'Insects', uz: 'Hasharotlar', gbif: { classKey: [216] } },
-  { id: 'spiders', label: 'Spiders, scorpions and mites', uz: 'Oʻrgimchaklar, chayonlar va kanalar', gbif: { classKey: [367] } },
-  { id: 'crustaceans', label: 'Crabs, shrimp, woodlice and other crustaceans', uz: 'Qisqichbaqalar, krevetkalar va boshqa qisqichbaqasimonlar', gbif: { classKey: [229, 281, 353, 203, 11545536, 235, 236] } },
-  { id: 'molluscs', label: 'Snails, shells, squid and octopus', uz: 'Shilliqqurtlar, chigʻanoqlar, kalmarlar va sakkizoyoqlar', gbif: { phylumKey: [52] } },
-  { id: 'corals', label: 'Corals and jellyfish', uz: 'Marjonlar va meduzalar', gbif: { phylumKey: [43] } },
-  { id: 'echinoderms', label: 'Starfish and urchins', uz: 'Dengiz yulduzlari va tipratikanlari', gbif: { phylumKey: [50] } },
-  { id: 'worms', label: 'Worms and leeches', uz: 'Chuvalchanglar va zuluklar', gbif: { phylumKey: [42, 5967481, 108] } },
-  { id: 'other', label: 'Everything else', uz: 'Boshqalar' },
+export const GROUPS: { id: GroupId; label: string; gbif?: Filter }[] = [
+  { id: 'mammals', label: 'Mammals', gbif: { classKey: [359] } },
+  { id: 'birds', label: 'Birds', gbif: { classKey: [212] } },
+  { id: 'reptiles', label: 'Reptiles', gbif: { classKey: [11592253, 11418114, 11493978, 11569602] } },
+  { id: 'amphibians', label: 'Frogs, toads and salamanders', gbif: { classKey: [131] } },
+  { id: 'fish', label: 'Fish', gbif: { taxonKey: [204, 238, 119, 11881065, 11733052, 11500725, ...FISH_ORDERS] } },
+  { id: 'sharks', label: 'Sharks and rays', gbif: { classKey: [121, 120] } },
+  { id: 'insects', label: 'Insects', gbif: { classKey: [216] } },
+  { id: 'spiders', label: 'Spiders, scorpions and mites', gbif: { classKey: [367] } },
+  { id: 'crustaceans', label: 'Crabs, shrimp, woodlice and other crustaceans', gbif: { classKey: [229, 281, 353, 203, 11545536, 235, 236] } },
+  { id: 'molluscs', label: 'Snails, shells, squid and octopus', gbif: { phylumKey: [52] } },
+  { id: 'corals', label: 'Corals and jellyfish', gbif: { phylumKey: [43] } },
+  { id: 'echinoderms', label: 'Starfish and urchins', gbif: { phylumKey: [50] } },
+  { id: 'worms', label: 'Worms and leeches', gbif: { phylumKey: [42, 5967481, 108] } },
+  { id: 'other', label: 'Everything else' },
 ];
 /** Every backbone key that defines a group, whatever its rank (class, order or phylum): keys are unique across ranks. */
 export const groupKeys = (g: (typeof GROUPS)[number]): number[] => Object.values(g.gbif ?? {}).flat().map(Number);
@@ -150,18 +150,18 @@ export function binnedQuantile(bins: Bin[], q: number): number | null {
 
 /** The living Earth from the deepest trench to the highest peaks, in metres above (+) or below (-) sea level.
  *  Each zone is one GBIF count: `depth` for the sea, `elevation` for land. */
-export const ZONES: { from: number; to: number; en: string; uz: string; param: 'depth' | 'elevation'; range: [number, number] }[] = [
-  { from: 4500, to: 9000, en: 'Above 4,500 m, high mountains', uz: '4 500 m dan yuqori, baland togʻlar', param: 'elevation', range: [4500, 9000] },
-  { from: 3000, to: 4500, en: '3,000–4,500 m', uz: '3 000–4 500 m', param: 'elevation', range: [3000, 4500] },
-  { from: 2000, to: 3000, en: '2,000–3,000 m', uz: '2 000–3 000 m', param: 'elevation', range: [2000, 3000] },
-  { from: 1000, to: 2000, en: '1,000–2,000 m, hills and plateaus', uz: '1 000–2 000 m, adirlar va platolar', param: 'elevation', range: [1000, 2000] },
+export const ZONES: { from: number; to: number; en: string; param: 'depth' | 'elevation'; range: [number, number] }[] = [
+  { from: 4500, to: 9000, en: 'Above 4,500 m, high mountains', param: 'elevation', range: [4500, 9000] },
+  { from: 3000, to: 4500, en: '3,000–4,500 m', param: 'elevation', range: [3000, 4500] },
+  { from: 2000, to: 3000, en: '2,000–3,000 m', param: 'elevation', range: [2000, 3000] },
+  { from: 1000, to: 2000, en: '1,000–2,000 m, hills and plateaus', param: 'elevation', range: [1000, 2000] },
   // from -500 m: land below sea level (the Caspian shore, the Dead Sea, polders) counts as lowland
-  { from: 0, to: 1000, en: 'Below 1,000 m, lowlands', uz: '1 000 m gacha, pasttekisliklar', param: 'elevation', range: [-500, 1000] },
+  { from: 0, to: 1000, en: 'Below 1,000 m, lowlands', param: 'elevation', range: [-500, 1000] },
   // from 0.5 m: many land datasets fill depth = 0, which would put elephants in the sea
-  { from: -200, to: 0, en: 'Sea, 0–200 m, sunlit', uz: 'Dengiz, 0–200 m, yorugʻ qatlam', param: 'depth', range: [0.5, 200] },
-  { from: -1000, to: -200, en: 'Sea, 200–1,000 m, twilight', uz: 'Dengiz, 200–1 000 m, gʻira-shira', param: 'depth', range: [200, 1000] },
-  { from: -4000, to: -1000, en: 'Sea, 1–4 km, midnight', uz: 'Dengiz, 1–4 km, yarim tun', param: 'depth', range: [1000, 4000] },
-  { from: -11000, to: -4000, en: 'Sea, below 4 km, abyss', uz: 'Dengiz, 4 km dan pastda, tubsizlik', param: 'depth', range: [4000, 11000] },
+  { from: -200, to: 0, en: 'Sea, 0–200 m, sunlit', param: 'depth', range: [0.5, 200] },
+  { from: -1000, to: -200, en: 'Sea, 200–1,000 m, twilight', param: 'depth', range: [200, 1000] },
+  { from: -4000, to: -1000, en: 'Sea, 1–4 km, midnight', param: 'depth', range: [1000, 4000] },
+  { from: -11000, to: -4000, en: 'Sea, below 4 km, abyss', param: 'depth', range: [4000, 11000] },
 ];
 
 /** Records per zone (ZONES order) from GBIF facet counts of distinct elevation and depth values. A value on a zone

@@ -378,7 +378,7 @@ export function micoSpecies(base: string, id: number): Promise<MicoSpecies> { re
 // ---------- Wikidata / Commons / Wikipedia ----------
 /** Language for names and Wikipedia: the interface language when the reader chose one, else the browser's. */
 export function readerLanguage(): string {
-  try { const saved = typeof window !== 'undefined' ? window.localStorage.getItem('lang') : null; if (saved === 'en' || saved === 'uz') return saved; } catch { /* blocked */ }
+  try { const saved = typeof window !== 'undefined' ? window.localStorage.getItem('lang') : null; if (saved && /^[a-z]{2,3}$/.test(saved)) return saved; } catch { /* blocked */ }
   const l = (typeof navigator !== 'undefined' ? navigator.language : 'en').toLowerCase().split('-')[0];
   return /^[a-z]{2,3}$/.test(l) ? l : 'en';
 }
@@ -593,7 +593,7 @@ export async function searchPlaces(text: string, lang: string, signal?: AbortSig
 export async function placeName(lat: number, lon: number, lang: string, signal?: AbortSignal): Promise<{ name: string; sea: boolean } | null> {
   // land first: Marine Regions also returns lakes whose outline box reaches far inland (the Serengeti came back as
   // "Victoria, Lake"); Nominatim has no address at open sea, and then the sea name is the answer
-  const r = await getJSON<{ address?: Record<string, string> }>(`https://nominatim.openstreetmap.org/reverse?${q({ format: 'jsonv2', lat: lat.toFixed(4), lon: lon.toFixed(4), zoom: 8, 'accept-language': lang === 'uz' ? 'uz,en' : 'en' })}`,
+  const r = await getJSON<{ address?: Record<string, string> }>(`https://nominatim.openstreetmap.org/reverse?${q({ format: 'jsonv2', lat: lat.toFixed(4), lon: lon.toFixed(4), zoom: 8, 'accept-language': lang === 'en' ? 'en' : `${lang},en` })}`,
     { signal, timeoutMs: 10000 }).catch(() => null);
   const a = r?.address;
   if (!a || !a.country) {

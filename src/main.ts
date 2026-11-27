@@ -4,7 +4,7 @@ import '@fontsource-variable/source-serif-4/wght.css'; // Wikipedia summaries, u
 import './styles.css';
 import * as api from './api';
 import { commonsThumbs } from './wiki';
-import { fmt, h, plural } from './dom';
+import { fmt, h } from './dom';
 import { Globe } from './map';
 import { Panel } from './panel';
 import { initSearch } from './search';
@@ -224,7 +224,7 @@ $('#migrations-open').addEventListener('click', async () => {
         const b = h('button', { class: 'mig', attrs: { 'data-q': `${sp.common} ${sp.scientific}`.toLowerCase(), 'data-sci': sp.scientific.toLowerCase(), 'data-name': sp.scientific } },
           h('span', { class: 'mig-thumb', attrs: { 'aria-hidden': 'true' } }),
           h('span', { class: 'mig-name', text: sp.common }), h('span', { class: 'latin', text: sp.scientific }),
-          h('span', { class: 'mig-n', text: sp.routes ? t('{0}, {1}', plural(sp.sites, 'place'), plural(sp.routes, 'link'), fmt(sp.sites), fmt(sp.routes)) : tn(sp.sites, '{0} place', '{0} places') }));
+          h('span', { class: 'mig-n', text: sp.routes ? t('{0}, {1}', tn(sp.sites, '{0} place', '{0} places'), tn(sp.routes, '{0} link', '{0} links')) : tn(sp.sites, '{0} place', '{0} places') }));
         void id;
         b.addEventListener('click', async () => {
           const note = b.querySelector<HTMLElement>('.mig-n')!, was = note.textContent;

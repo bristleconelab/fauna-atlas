@@ -2,7 +2,7 @@
 // in stages, so each view renders a skeleton first and fills in names, photos and credits as they come back. Each view
 // owns an AbortController: opening another view cancels the requests of the one before.
 import * as api from './api';
-import { h, fmt, loadPhoto, plural, download } from './dom';
+import { h, fmt, loadPhoto, download } from './dom';
 import { bboxToWkt, formatLatLon, geohash, geohashBounds, type BBox } from './geo';
 import {
   countByGroup, interleaveGroups, GROUPS, groupOfKeys, rankSpecies, THREATENED, verticalRange, ZONES,
@@ -120,7 +120,7 @@ export class Panel {
     });
 
     const tell = (n: number, rec: number) => {
-      summary.textContent = tx('{0} of animals recorded in {1}, from {2} records.', plural(n, 'species', 'species'), area, fmt(rec), fmt(n));
+      summary.textContent = tx('{0} of animals recorded in {1}, from {2} records.', tn(n, '{0} species', '{0} species'), area, fmt(rec));
     };
     // The all-animals answer comes first: the count shows while the kinds are still sorting.
     const sorting = h('div', { class: 'sorting' },
@@ -207,7 +207,7 @@ export class Panel {
     });
     const render = () => {
       const shown = base();
-      if (onlyThreat && threat) listNote.textContent = tx('{0} (IUCN: critically endangered, endangered or vulnerable).', plural(shown.length, 'threatened species', 'threatened species'), fmt(shown.length));
+      if (onlyThreat && threat) listNote.textContent = tx('{0} (IUCN: critically endangered, endangered or vulnerable).', tn(shown.length, '{0} threatened species', '{0} threatened species'));
       grid.replaceChildren();
       if (!shown.length) grid.append(h('li', { class: 'mosaic-empty', text: query ? tx('No animal in this list matches. Names are still being looked up for some.') : tx('None here.') }));
       let n = 0;
@@ -568,7 +568,7 @@ export class Panel {
     const max = Math.max(...counts, 1);
     const where = (v: number) => (v >= 0 ? tx('{0} m above sea level', fmt(v)) : tx('{0} m below the sea surface', fmt(-v)));
     box.append(h('h3', { text: tx('From the deep sea to the mountains') }),
-      h('p', { text: tx('Usually between {0} and {1}: the middle half of {2} with a height or a depth.', where(r.from), where(r.to), plural(r.records, 'record'), fmt(r.records)) }));
+      h('p', { text: tx('Usually between {0} and {1}: the middle half of {2} with a height or a depth.', where(r.from), where(r.to), tn(r.records, '{0} record', '{0} records')) }));
     const col = h('ol', { class: 'column vertical', attrs: { 'aria-label': tx('Records by height and depth') } });
     ZONES.forEach((z, i) => {
       const usual = r.from < z.to && r.to > z.from;

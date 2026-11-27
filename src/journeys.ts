@@ -4,11 +4,11 @@
 //                         (matched by scientific name or a GBIF synonym; its links join places, they are not routes)
 //   "When it is recorded"  records by month north and south of the equator, and by decade (GBIF facets)
 import * as api from './api';
-import { h, fmt, plural } from './dom';
+import { h, fmt } from './dom';
 import { greatCircle } from './geo';
 import { ACTIVITY_COLORS, TRACK_COLORS, type ActivityKind } from './map';
 import { decadeCounts, trackAtHours, type TagTrack, type TagTracks } from './tracks';
-import { t, MONTHS as MONTH_NAMES } from './i18n';
+import { t, tn, MONTHS as MONTH_NAMES } from './i18n';
 
 export type Overlay = 'micoRoutes' | 'micoSites' | 'tracks' | 'heads';
 export interface JourneyHost {
@@ -118,7 +118,7 @@ export function renderJourneys(o: JourneyOpts, mount: HTMLElement, host: Journey
           host.setOverlay('tracks', fc(mine().flatMap(([tr, i]) => trackAtHours(tr, hours).upto.map((part) => ({ type: 'Feature' as const, properties: props(tr, i), geometry: { type: 'LineString' as const, coordinates: part } })))));
           host.setOverlay('heads', heads(hours));
           const moving = mine().filter(([tr]) => (tr.p.at(-1)?.at(-1)?.[2] ?? 0) >= hours).length;
-          clock.textContent = t('Day {0} after tagging, {1} still sending', fmt(Math.round(hours / 24)), plural(moving, 'animal'), fmt(moving));
+          clock.textContent = t('Day {0} after tagging, {1} still sending', fmt(Math.round(hours / 24)), tn(moving, '{0} animal', '{0} animals'));
         }
         if (f < 1) raf = requestAnimationFrame(frame);
         else { clock.textContent = t('Every journey, from tagging to the last signal'); draw(); }
@@ -143,10 +143,10 @@ export function renderJourneys(o: JourneyOpts, mount: HTMLElement, host: Journey
     showAll.addEventListener('click', () => list.querySelector<HTMLButtonElement>('.track-item[aria-pressed="true"]')?.click());
     const dropped = drawn.reduce((a, t) => a + t.d, 0);
     tagBox.replaceChildren(
-      h('p', { text: t('The real journeys of {0}, from GPS and satellite tags{1}. The longest: {2} km. Each colour is one animal; pick one to see it alone.', plural(data.animals, 'tagged animal'), data.animals > drawn.length ? ` (the ${drawn.length} longest are drawn)` : '', fmt(drawn[0].km), fmt(data.animals), data.animals > drawn.length ? ` (eng uzun ${drawn.length} tasi chizilgan)` : '') }),
+      h('p', { text: t('The real journeys of {0}, from GPS and satellite tags{1}. The longest: {2} km. Each colour is one animal; pick one to see it alone.', tn(data.animals, '{0} tagged animal', '{0} tagged animals'), data.animals > drawn.length ? t(' (the {0} longest are drawn)', drawn.length) : '', fmt(drawn[0].km)) }),
       h('div', { class: 'play-row' }, play, clock), list, showAll,
       h('p', { class: 'fine' }, t('Tracks from '), ...data.studies.flatMap((st, i) => [i ? ', ' : '', h('a', { text: st.title, attrs: { href: st.url, ...ext } }), ` (${st.licence})`]), t(', through GBIF.')),
-      h('p', { class: 'fine', text: t('Lines follow the fixes the tags sent. Gaps of more than 20 days are left open. Fixes that would need more than {0} km a day are dropped as location errors{1}; moves under 5 km do not add to the distance.', fmt(data.cap), dropped ? ` (${fmt(dropped)} here)` : '', dropped ? ` (bu yerda ${fmt(dropped)} ta)` : '') }));
+      h('p', { class: 'fine', text: t('Lines follow the fixes the tags sent. Gaps of more than 20 days are left open. Fixes that would need more than {0} km a day are dropped as location errors{1}; moves under 5 km do not add to the distance.', fmt(data.cap), dropped ? t(' ({0} here)', fmt(dropped)) : '') }));
   };
 
   // ---- MiCO, for the 109 sea animals it covers: the places they use; links between them are shown on request ----
@@ -175,7 +175,7 @@ export function renderJourneys(o: JourneyOpts, mount: HTMLElement, host: Journey
     });
     const frame = h('button', { class: 'btn small quiet', text: t('Show on the globe'), on: { click: () => host.fitTo(points) } });
     micoBox.append(
-      h('p', { text: t('Places this species uses on its migrations: {0}{1}, from published tracking and tagging studies.', plural(d.sites.length, 'place'), d.routes.length ? `, ${plural(d.routes.length, 'link')} between them` : '', fmt(d.sites.length), d.routes.length ? `, ular orasida ${fmt(d.routes.length)} ta bogʻlanish` : '') }),
+      h('p', { text: t('Places this species uses on its migrations: {0}{1}, from published tracking and tagging studies.', tn(d.sites.length, '{0} place', '{0} places'), d.routes.length ? t(', {0} between them', tn(d.routes.length, '{0} link', '{0} links')) : '') }),
       h('ul', { class: 'legend-dots' }, ...kinds.map((k) => h('li', {}, h('span', { class: 'dot', attrs: { style: `background:${ACTIVITY_COLORS[k]}` } }), ACTIVITY_LABEL[k]))),
       h('div', { class: 'btn-row' }, frame, d.routes.length ? links : null,
         h('a', { class: 'btn small quiet', text: t('Tag tracks in Ocean Life Atlas'), attrs: { href: `https://oceanlife.bristleconelab.org/#sp=${wormsId}`, ...ext } })),
