@@ -193,6 +193,14 @@ export async function gbifVertical(key: number, signal?: AbortSignal): Promise<V
   }));
   return { zones, values: null };
 }
+/** Threatened species (IUCN CR, EN, VU) recorded inside a polygon, with their category: three facet requests. */
+export async function gbifThreatenedIn(wkt: string, signal?: AbortSignal): Promise<Map<number, string>> {
+  const out = new Map<number, string>();
+  const cats = ['CR', 'EN', 'VU'];
+  const parts = await Promise.all(cats.map((cat) => gbifFacet({ geometry: wkt, iucnRedListCategory: cat }, 'speciesKey', 3000, signal)));
+  parts.forEach((f, i) => { for (const x of f) if (!out.has(Number(x.name))) out.set(Number(x.name), cats[i]); });
+  return out;
+}
 /** Facet counts (month, year...) for any filter. */
 export async function gbifFacet(filter: Params, facet: string, limit = 400, signal?: AbortSignal): Promise<{ name: string; count: number }[]> {
   const r = await getJSON<Search>(`${GBIF}/occurrence/search?${qs({ ...CLEAN, limit: 0, facet, facetLimit: limit, ...filter })}`, { signal });

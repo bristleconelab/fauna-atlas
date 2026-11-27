@@ -46,6 +46,8 @@ export class Panel {
   private ctl = new AbortController();
   private lang = api.readerLanguage();
   private known = new Map<number, Known>();
+  /** IUCN category by GBIF key, from the threatened-only filter (badges on tiles). */
+  private red = new Map<number, string>();
   comparingFrom: number | null = null;
   /** End "compare with…": the search box goes back to its own placeholder. */
   stopCompare() {
@@ -160,9 +162,54 @@ export class Panel {
     const chips = h('div', { class: 'chips', attrs: { role: 'group', 'aria-label': L('Filter by kind of animal', 'Hayvon turkumi boʻyicha saralash') } });
     const grid = h('ul', { class: 'mosaic' });
     const more = h('button', { class: 'btn more', text: L('Show more', 'Yana koʻrsatish') });
+    // find in this list, and threatened only: both narrow whatever the kind chips show
+    let query = '', onlyThreat = false, threat: Map<number, string> | null = null, looking = 0;
+    const find = h('input', { class: 'list-find', attrs: { type: 'search', placeholder: L('Find in this list', 'Shu roʻyxatdan qidirish'), 'aria-label': L('Find an animal in this list', 'Shu roʻyxatdan hayvon qidirish'), autocomplete: 'off', spellcheck: 'false' } }) as HTMLInputElement;
+    const threatBtn = h('button', { class: 'chip threat', attrs: { 'aria-pressed': 'false' }, text: L('Threatened only', 'Faqat xavf ostidagilar') });
+    const listNote = h('p', { class: 'fine list-note', attrs: { 'aria-live': 'polite' } });
+    const nameOf = (x: Taxon) => { const k = this.known.get(x.key); return `${k?.name ?? ''} ${k?.sci ?? ''}`.toLowerCase(); };
+    const base = () => {
+      let shown = active === 'all' ? mixed : list.filter((x) => x.group === active);
+      if (onlyThreat && threat) shown = shown.filter((x) => threat!.has(x.key));
+      if (query) shown = shown.filter((x) => nameOf(x).includes(query));
+      return shown;
+    };
+    // names for the whole list, in batches, so "find" can match animals not shown yet (the site's own index answers
+    // the well-known ones at once; Wikidata the rest)
+    const lookAll = async () => {
+      const my = ++looking;
+      const pool = active === 'all' ? list : list.filter((x) => x.group === active);
+      const todo = pool.filter((x) => !this.known.has(x.key));
+      for (let i = 0; i < todo.length && my === looking && t === this.token; i += 240) {
+        listNote.textContent = L(`Looking up names: ${fmt(Math.min(i + 240, todo.length))} of ${fmt(todo.length)}…`, `Nomlar aniqlanmoqda: ${fmt(Math.min(i + 240, todo.length))} / ${fmt(todo.length)}…`);
+        await this.lookup(todo.slice(i, i + 240), signal).catch(() => {});
+        if (my === looking && t === this.token) render();
+      }
+      if (my === looking && t === this.token) listNote.textContent = '';
+    };
+    let timer = 0;
+    find.addEventListener('input', () => {
+      clearTimeout(timer);
+      timer = window.setTimeout(() => { query = find.value.trim().toLowerCase(); render(); if (query) void lookAll(); else listNote.textContent = ''; }, 220);
+    });
+    threatBtn.addEventListener('click', async () => {
+      onlyThreat = !onlyThreat;
+      threatBtn.setAttribute('aria-pressed', String(onlyThreat));
+      if (onlyThreat && !threat) {
+        listNote.textContent = L('Finding the threatened animals here…', 'Bu yerdagi xavf ostidagi hayvonlar aniqlanmoqda…');
+        threat = await api.gbifThreatenedIn(wkt, signal).catch(() => null);
+        if (t !== this.token) return;
+        if (!threat) { listNote.textContent = L('The Red List did not load; try again.', 'Qizil kitob yuklanmadi; qayta urining.'); onlyThreat = false; threatBtn.setAttribute('aria-pressed', 'false'); return; }
+        for (const [k, c] of threat) this.red.set(k, c);
+        listNote.textContent = '';
+      }
+      render();
+    });
     const render = () => {
-      const shown = active === 'all' ? mixed : list.filter((x) => x.group === active);
+      const shown = base();
+      if (onlyThreat && threat) listNote.textContent = L(`${plural(shown.length, 'threatened species', 'threatened species')} (IUCN: critically endangered, endangered or vulnerable).`, `${fmt(shown.length)} ta xavf ostidagi tur (IUCN: yoʻqolish arafasida, yoʻqolib borayotgan yoki zaif).`);
       grid.replaceChildren();
+      if (!shown.length) grid.append(h('li', { class: 'mosaic-empty', text: query ? L('No animal in this list matches. Names are still being looked up for some.', 'Roʻyxatda mos hayvon yoʻq. Baʼzilarining nomi hali aniqlanmoqda.') : L('None here.', 'Bu yerda yoʻq.') }));
       let n = 0;
       const page = () => {
         const slice = shown.slice(n, n + PAGE);
@@ -211,7 +258,7 @@ export class Panel {
         ...list.map((x) => [x.key, this.known.get(x.key)?.sci ?? '', this.known.get(x.key)?.name ?? '', GROUPS.find((g) => g.id === x.group)!.label, x.records, `https://www.gbif.org/species/${x.key}`])];
       download(`fauna-${lat.toFixed(2)}_${lon.toFixed(2)}.csv`, toCsv(rows), 'text/csv');
     });
-    this.body.append(chips, grid, more,
+    this.body.append(h('div', { class: 'list-tools' }, find, threatBtn), listNote, chips, grid, more,
       h('p', { class: 'fine', text: L('The mixed view takes each kind in turn and leads with species that have a photo; insects, spiders and worms take a turn less often, because they would fill the screen. Record counts reflect where people looked and what they looked for, not only what is common.', 'Aralash koʻrinish turkumlarni navbatma-navbat oladi va rasmi bor turlardan boshlaydi; hasharotlar, oʻrgimchaklar va chuvalchanglar ekranni toʻldirib yubormasligi uchun kamroq navbat oladi. Yozuvlar soni nima keng tarqalganini emas, odamlar qayerda va nimani qidirganini ham koʻrsatadi.') }),
       h('div', { class: 'btn-row export' }, csv),
       h('p', { class: 'fine cite', text: L('Cite: ', 'Iqtibos: ') + `GBIF.org (${new Date().toISOString().slice(0, 10)}) GBIF Occurrence Search, Animalia, ${wkt}, https://www.gbif.org` }));
@@ -326,9 +373,10 @@ export class Panel {
       if (!li || !w) return;
       if (w.name) li.querySelector('.tile-name')!.textContent = w.name;
       if (w.sci) li.querySelector('.latin')!.textContent = w.sci;
-      li.querySelector('.tile')!.setAttribute('aria-label', [w.name, w.sci, w.redlist && THREATENED.has(w.redlist) ? IUCN_LABEL[w.redlist] : ''].filter(Boolean).join(', '));
+      li.querySelector('.tile')!.setAttribute('aria-label', [w.name, w.sci, (w.redlist ?? this.red.get(k)) && THREATENED.has((w.redlist ?? this.red.get(k))!) ? IUCN_LABEL[(w.redlist ?? this.red.get(k))!] : ''].filter(Boolean).join(', '));
       // threatened animals carry their Red List badge on the tile (known from the index; others show it on their page)
-      if (w.redlist && THREATENED.has(w.redlist) && !li.querySelector('.iucn')) li.querySelector('.tile-photo')!.append(h('span', { class: `iucn iucn-${w.redlist}`, text: IUCN_LABEL[w.redlist] }));
+      const rl = w.redlist ?? this.red.get(k);
+      if (rl && THREATENED.has(rl) && !li.querySelector('.iucn')) li.querySelector('.tile-photo')!.append(h('span', { class: `iucn iucn-${rl}`, text: IUCN_LABEL[rl] }));
       const frame = li.querySelector<HTMLElement>('.tile-photo')!;
       if (frame.querySelector('img')) return;
       if (w.image) loadPhoto(frame, commonsThumbs(w.image, 330), '', false).dataset.file = w.image;
