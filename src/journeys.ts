@@ -225,12 +225,12 @@ export function renderJourneys(o: JourneyOpts, mount: HTMLElement, host: Journey
   return cleanup;
 }
 
-function monthChart(m: number[], label: string): HTMLElement {
+export function monthChart(m: number[], label: string): HTMLElement {
   const max = Math.max(...m, 1);
   return h('ol', { class: 'months', attrs: { 'aria-label': label } }, ...m.map((v, i) => h('li', { attrs: { title: `${FULL_MONTHS[i]}: ${fmt(v)}` } },
     h('span', { class: 'mbar', attrs: { style: `--h:${(v / max) * 100}%` } }), h('span', { class: 'mlabel', text: MONTHS[i][0] }))));
 }
-function seasonLine(m: number[], where: string): string {
+export function seasonLine(m: number[], where: string): string {
   const p = peakSeason(m);
   return p ? t('{0}: most records from {1} to {2} ({3} %).', where, FULL_MONTHS[p.from], FULL_MONTHS[p.to], Math.round(p.share * 100))
     : t('{0}: recorded all year round, without a clear season.', where);

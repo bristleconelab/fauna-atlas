@@ -259,7 +259,7 @@ export async function gbifFacet(filter: Params, facet: string, limit = 400, sign
 export interface GbifSpecies {
   key: number; scientificName: string; canonicalName?: string; vernacularName?: string; rank?: string; taxonomicStatus?: string;
   acceptedKey?: number; kingdom?: string; phylum?: string; class?: string; order?: string; family?: string;
-  phylumKey?: number; classKey?: number; orderKey?: number; nubKey?: number;
+  phylumKey?: number; classKey?: number; orderKey?: number; nubKey?: number; genus?: string; genusKey?: number; familyKey?: number;
 }
 export function gbifSpecies(key: number, signal?: AbortSignal, low = false): Promise<GbifSpecies> {
   return getJSON(`${GBIF}/species/${Math.trunc(key)}`, { signal, low });
@@ -323,6 +323,44 @@ export async function gbifPhoto(key: number, signal?: AbortSignal, low = false):
     return { url: m.identifier.replace(/\/original\.(jpe?g|png)$/i, '/medium.$1'), credit: m.rightsHolder ?? 'iNaturalist observer', licence: lic, page: `https://www.gbif.org/occurrence/${o.key}` };
   }
   return null;
+}
+
+/** Several openly licensed iNaturalist photos of a species from GBIF, one per observation, for the photo strip. */
+export async function gbifPhotos(key: number, n = 8, signal?: AbortSignal): Promise<Photo[]> {
+  const r = await getJSON<{ results: { key: number; media?: { identifier?: string; license?: string; rightsHolder?: string }[] }[] }>(
+    `${GBIF}/occurrence/search?${qs({ taxonKey: key, mediaType: 'StillImage', datasetKey: INAT, limit: 60 })}`, { signal, low: true }).catch(() => null);
+  const out: Photo[] = [];
+  for (const o of r?.results ?? []) {
+    const m = (o.media ?? []).find((x) => x.identifier && /^(CC0|CC BY|CC BY-SA)$/.test(licenceShort(x.license ?? '')));
+    if (!m) continue;
+    out.push({ url: m.identifier!.replace(/\/original\.(jpe?g|png)$/i, '/medium.$1'), credit: m.rightsHolder ?? 'iNaturalist observer', licence: licenceShort(m.license ?? ''), page: `https://www.gbif.org/occurrence/${o.key}` });
+    if (out.length >= n) break;
+  }
+  return out;
+}
+
+/** iNaturalist's best-liked research-grade photos of the animal itself (annotation "Evidence of presence: Organism",
+ *  so no tracks, scat or empty camera-trap frames), open licences only (CC0, CC BY, CC BY-SA). API v2 with a field
+ *  list: about 5 kB instead of 1 MB. */
+export async function inatPhotos(sci: string, n = 8, signal?: AbortSignal): Promise<Photo[]> {
+  const LIC: Record<string, string> = { cc0: 'CC0', 'cc-by': 'CC BY', 'cc-by-sa': 'CC BY-SA' };
+  const r = await getJSON<{ results: { id: number; photos?: { url?: string; license_code?: string; attribution?: string }[] }[] }>(
+    `https://api.inaturalist.org/v2/observations?${q({ taxon_name: sci, photo_license: 'cc0,cc-by,cc-by-sa', quality_grade: 'research', term_id: 22, term_value_id: 24, order_by: 'votes', per_page: n, fields: 'id,photos.url,photos.license_code,photos.attribution' })}`,
+    { signal, timeoutMs: 9000 });
+  const out: Photo[] = [];
+  for (const o of r.results ?? []) {
+    const p = (o.photos ?? []).find((x) => x.url && x.license_code && LIC[x.license_code]);
+    if (p) out.push({ url: p.url!.replace('/square.', '/medium.'), credit: (p.attribution ?? '').replace(/^\(c\)\s*/, '').replace(/,\s*some rights reserved.*$|,\s*no rights reserved.*$/i, '') || 'iNaturalist observer', licence: LIC[p.license_code!], page: `https://www.inaturalist.org/observations/${o.id}` });
+  }
+  return out;
+}
+
+/** The most recorded relatives of a species: others in its genus, or in its family when the genus has few. */
+export async function gbifRelatives(sp: GbifSpecies, n = 8, signal?: AbortSignal): Promise<{ by: 'genus' | 'family'; list: { key: number; records: number }[] }> {
+  const ask = async (f: Params) => (await gbifFacet(f, 'speciesKey', n + 1, signal)).map((x) => ({ key: Number(x.name), records: x.count })).filter((x) => x.key !== sp.key).slice(0, n);
+  const g = sp.genusKey ? await ask({ genusKey: sp.genusKey }) : [];
+  if (g.length >= 3 || !sp.familyKey) return { by: 'genus', list: g };
+  return { by: 'family', list: await ask({ familyKey: sp.familyKey }) };
 }
 
 /** Short licence name from a URL or a rights statement. Order matters: the most specific terms first. */

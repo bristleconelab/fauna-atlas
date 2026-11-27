@@ -24,7 +24,7 @@ export const AGE_COLORS = ['#5fc0b0', '#f2c94c', '#e07a5f', '#8e4fa0'];
 export const RANGE_COLORS = { then: '#b39ddb', now: '#f2c94c', both: '#f4f8f7', a: '#f2c94c', b: '#8ecbff' };
 /** GBIF map styles matching those colours (checked 2026-11-26: yellow-red squares, purple squares). Species b uses the
  *  yellow-red squares turned blue with raster-hue-rotate: GBIF has no blue square style (blue.marker draws dots). */
-const RANGE_STYLE = { all: 'classic-noborder.poly', then: 'purpleWhite.poly', now: 'classic-noborder.poly', a: 'classic-noborder.poly', b: 'classic-noborder.poly' };
+const RANGE_STYLE = { all: 'classic-noborder.poly', then: 'purpleWhite.poly', now: 'classic-noborder.poly', a: 'classic-noborder.poly', b: 'classic-noborder.poly', years: 'classic-noborder.poly' };
 /** Map zoom from which range and survey cells are drawn at full size (see showRanges). */
 const RANGE_NEAR = 4;
 function COLORS_LOOKED() { return ['#2a1d5c', '#2f6f99', '#5fc0b0', '#c8ef9c', '#fff7c2']; }
@@ -292,7 +292,7 @@ export class Globe {
    *  GBIF cells are a fixed size within a tile, and zoomed out the globe shows lower-zoom tiles (lower still towards
    *  the poles), so the same cells would cover more and more ground. Below RANGE_NEAR the cells are half the size;
    *  the square grids nest, so the switch cuts no cell. */
-  async showRanges(list: { key: number; mode: 'all' | 'then' | 'now' | 'a' | 'b' }[]) {
+  async showRanges(list: { key: number; mode: 'all' | 'then' | 'now' | 'a' | 'b' | 'years'; from?: number; to?: number }[]) {
     await this.ready;
     for (const id of this.rangeLayers.splice(0)) { this.map.removeLayer(id); this.map.removeSource(id); }
     const YEAR = new Date().getUTCFullYear();
@@ -300,6 +300,7 @@ export class Globe {
       const filter: Record<string, string | number> = { taxonKey: r.key };
       if (r.mode === 'then') filter.year = '1758,1999';
       if (r.mode === 'now') filter.year = `2000,${YEAR}`;
+      if (r.mode === 'years') filter.year = `${r.from ?? 1758},${r.to ?? YEAR}`; // the density tiles honour year (checked 2026-11-27)
       const opacity = r.mode === 'then' || r.mode === 'b' ? 0.75 : 0.8;
       for (const [part, squareSize, zooms] of [['far', 32, { maxzoom: RANGE_NEAR }], ['near', 64, { minzoom: RANGE_NEAR }]] as const) {
         const id = `rng-${i}-${part}`;

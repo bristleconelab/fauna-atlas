@@ -11,6 +11,7 @@ import { initSearch } from './search';
 import { initSheet } from './sheet';
 import { formatHash, parseHash, type ViewState } from './state';
 import { outerRings, ringsBox } from './geo';
+import { removeSaved, savedList } from './saved';
 import { languageName, LANGS, lang, setLang, t, tn } from './i18n';
 import { initTour } from './tour';
 
@@ -307,13 +308,34 @@ migrations.querySelector('.about-close')?.addEventListener('click', () => migrat
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') set(false); });
 }
 
+// Saved animals: a drawer listing what the reader saved in this browser
+{
+  const dlg = $<HTMLDialogElement>('#saved'), ul = dlg.querySelector<HTMLElement>('.saved-list')!, count = $('#saved-open .nav-count');
+  const render = () => {
+    const list = savedList();
+    count.textContent = list.length ? String(list.length) : '';
+    count.hidden = !list.length;
+    ul.replaceChildren(...(list.length ? list.map((s) => {
+      const open = h('button', { class: 'saved-open' }, h('span', { class: 'saved-name', text: s.name }), h('span', { class: 'latin', text: s.sci }));
+      open.addEventListener('click', () => { dlg.close(); hint.hidden = true; panel.showSpecies(s.id); });
+      const rm = h('button', { class: 'saved-rm', text: '×', attrs: { 'aria-label': t('Remove {0}', s.name) } });
+      rm.addEventListener('click', () => removeSaved(s.id));
+      return h('li', {}, open, rm);
+    }) : [h('li', { class: 'saved-empty', text: t('Nothing saved yet.') })]));
+  };
+  render();
+  window.addEventListener('saved-change', render);
+  $('#saved-open').addEventListener('click', () => { render(); openDrawer(dlg); });
+  dlg.querySelector('.about-close')?.addEventListener('click', () => dlg.close());
+}
+
 // About
 const about = $<HTMLDialogElement>('#about');
 $('#about-open').addEventListener('click', () => openDrawer(about));
 about.querySelector('.about-close')?.addEventListener('click', () => about.close());
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !about.open && !migrations.open && panel.isOpen && document.activeElement !== $('#search')) panel.close();
+  if (e.key === 'Escape' && !about.open && !migrations.open && !$<HTMLDialogElement>('#saved').open && panel.isOpen && document.activeElement !== $('#search')) panel.close();
   if (e.key === '/' && document.activeElement !== $('#search') && !(document.activeElement instanceof HTMLInputElement)) { e.preventDefault(); $('#search').focus(); }
 });
 

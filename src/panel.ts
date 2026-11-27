@@ -10,7 +10,9 @@ import {
   type GroupId, type Taxon,
 } from './taxa';
 import { articleTitle, commonsAudio, commonsThumbs, type WikiInfo } from './wiki';
-import { renderJourneys, type JourneyHost } from './journeys';
+import { monthChart, monthsFromFacet, renderJourneys, seasonLine, type JourneyHost } from './journeys';
+import { openLightbox, type Shot } from './lightbox';
+import { isSaved, toggleSaved } from './saved';
 import { silhouette } from './silhouettes';
 import { chao1, formatLength, formatLife, formatMass, parseTraits, rangeOverlap, toCsv, type Traits } from './science';
 import { t as tx, tn, lang } from './i18n'; // t is the view token here, tr a Traits
@@ -25,7 +27,7 @@ const HERE_SHARE = 0.5;
 const ext = { target: '_blank', rel: 'noopener' };
 const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-export type RangeMode = { key: number; mode: 'all' | 'then' | 'now' | 'a' | 'b' };
+export type RangeMode = { key: number; mode: 'all' | 'then' | 'now' | 'a' | 'b' | 'years'; from?: number; to?: number };
 export interface PanelHost {
   showSquare(b: BBox | Ring[] | null): void;
   /** Let the reader draw an area on the globe; null if they cancel. */
@@ -47,7 +49,7 @@ interface Known { name?: string; sci?: string; image?: string; photo?: api.Photo
 
 export class Panel {
   private token = 0;
-  private place: { lat: number; lon: number; area?: AreaRef; label?: string; outline?: BBox | Ring[] } | null = null;
+  private place: { lat: number; lon: number; area?: AreaRef; label?: string; outline?: BBox | Ring[]; where?: api.Where; name?: string } | null = null;
   private species: { id: number; name: string } | null = null;
   private cleanups: (() => void)[] = [];
   private ctl = new AbortController();
@@ -144,7 +146,7 @@ export class Panel {
       outline = area.rings;
       if (!label) title.textContent = tx('Your area');
     }
-    this.place = { lat, lon, area, label, outline: outline ?? undefined };
+    this.place = { lat, lon, area, label, outline: outline ?? undefined, where };
     this.host.showSquare(outline);
 
     const nav = from ? h('button', { class: 'back', text: tx('Back to {0}', from.name), on: { click: () => this.showSpecies(from.id) } }) : null;
@@ -524,6 +526,11 @@ export class Panel {
     const latin = h('p', { class: 'latin big', text: '' });
     const lineage = h('p', { class: 'lineage', text: '' });
     const status = h('p', { class: 'status', hidden: true } as never);
+    const actions = h('div', { class: 'sp-actions' });
+    const strip = h('ul', { class: 'photo-strip', attrs: { hidden: '' } });
+    const inArea = h('section', { class: 'in-area', attrs: { hidden: '' } });
+    const relatives = h('section', { class: 'relatives', attrs: { hidden: '' } });
+    const shots: Shot[] = [];
     const about = h('div', { class: 'about-sp' });
     const facts = h('dl', { class: 'facts' });
     const bodyBox = h('section', { class: 'body-box', attrs: { hidden: true } });
@@ -533,7 +540,9 @@ export class Panel {
     const links = h('p', { class: 'links' });
     const rangeNote = h('p', { class: 'fine', text: tx('Coloured squares on the globe: where it has been recorded (GBIF).') });
     status.hidden = true;
-    this.body.append(...[nav, figure, name, latin, lineage, status, about, rangeNote, facts, bodyBox, vertical, tools, journeys, links].filter((x): x is HTMLElement => !!x));
+    this.body.append(...[nav, figure, strip, name, latin, lineage, status, actions, about, rangeNote, inArea, facts, bodyBox, vertical, relatives, tools, journeys, links].filter((x): x is HTMLElement => !!x));
+    figure.addEventListener('click', () => openLightbox(shots, 0));
+    figure.classList.add('zoomable');
     // The well-known animals open at once from the site's own index and photo (milliseconds), while GBIF and Wikidata
     // answer (seconds, from some places much longer); the large photo replaces the small one once it has loaded.
     const ownK = (await api.knownIndex(import.meta.env.BASE_URL))[id];
@@ -547,6 +556,7 @@ export class Panel {
         figure.append(qf, h('figcaption', { text: `${tx('Photo')}: ${ownK[3]}, ${ownK[4]}` }));
         loadPhoto(qf, [`${import.meta.env.BASE_URL}data/photos/${id}.webp`], tx('Photo of {0}', name.textContent), true);
         quick = true;
+        shots[0] = { src: [`${import.meta.env.BASE_URL}data/photos/${id}.webp`], credit: `${ownK[3]}, ${ownK[4]}`, href: ownK[5] || undefined, alt: ownK[0] };
       }
     }
 
@@ -599,6 +609,7 @@ export class Panel {
     latin.textContent = sci;
     if (!common) { latin.hidden = true; name.classList.add('latin'); }
     this.species = { id, name: common ?? sci };
+    this.speciesActions(actions, id, common ?? sci, sci);
     const group = groupOfKeys(sp.classKey, sp.phylumKey, sp.orderKey);
     lineage.textContent = [GROUP_LABEL[group], sp.family && tx('family {0}', sp.family), sp.order && tx('order {0}', sp.order)].filter(Boolean).join(', ');
     if (red && IUCN_LABEL[red]) { status.hidden = false; status.append(h('span', { class: `iucn iucn-${red}`, text: IUCN_LABEL[red] }), tx(' on the IUCN Red List')); }
@@ -611,9 +622,10 @@ export class Panel {
       if (!quick) show();
       cap.textContent = tx('Photo: Wikimedia Commons');
       loadPhoto(frame, commonsThumbs(wiki.image, 960), tx('Photo of {0}', name.textContent), true, () => { if (quick && t === this.token) show(); });
+      shots[0] = { src: [...commonsThumbs(wiki.image, 1280)], credit: tx('Photo: Wikimedia Commons'), alt: name.textContent ?? '' };
       api.commonsCredits([wiki.image]).then((c) => {
         const cr = c.get(wiki.image!);
-        if (cr && t === this.token) cap.replaceChildren(tx('Photo: '), h('a', { text: `${cr.artist}, ${cr.licence}`, attrs: { href: cr.page, ...ext } }));
+        if (cr && t === this.token) { cap.replaceChildren(tx('Photo: '), h('a', { text: `${cr.artist}, ${cr.licence}`, attrs: { href: cr.page, ...ext } })); if (shots[0]) { shots[0].credit = `${cr.artist}, ${cr.licence}, Wikimedia Commons`; shots[0].href = cr.page; } }
       });
     } else {
       const p = await api.gbifPhoto(id, signal).catch(() => null);
@@ -622,6 +634,7 @@ export class Panel {
         if (!quick) show();
         loadPhoto(frame, [p.url.replace('/medium.', '/large.'), p.url], tx('Photo of {0}', name.textContent), true, () => { if (quick && t === this.token) show(); });
         cap.replaceChildren(tx('Photo: '), h('a', { text: `${p.credit}, ${p.licence}, iNaturalist`, attrs: { href: p.page, ...ext } }));
+        shots[0] = { src: [p.url.replace('/medium.', '/large.'), p.url], credit: `${p.credit}, ${p.licence}, iNaturalist`, href: p.page, alt: name.textContent ?? '' };
       } else if (!quick) figure.hidden = true;
     }
 
@@ -647,6 +660,9 @@ export class Panel {
 
     api.gbifSynonyms(id, signal).then((syn) => api.wikidataExtras([id, ...syn], signal)).then((x) => { if (t === this.token) this.renderBody(bodyBox, parseTraits(x.rows), x.audio, name.textContent ?? ''); }).catch(() => {});
     this.renderVertical(vertical, id, signal, t);
+    this.renderStrip(strip, shots, id, sci, name.textContent ?? '', signal, t);
+    if (back?.where) this.renderInArea(inArea, id, back.where, signal, t);
+    this.renderRelatives(relatives, sp, signal, t);
     this.renderTools(tools, id, sci, this.species.name, signal, t);
     const synNames = await api.gbifSynonymNames(id, signal).catch(() => [] as string[]);
     if (t !== this.token) return;
@@ -656,6 +672,65 @@ export class Panel {
       h('a', { text: 'GBIF', attrs: { href: `https://www.gbif.org/species/${id}`, ...ext } }), ' ',
       h('a', { text: 'iNaturalist', attrs: { href: `https://www.inaturalist.org/taxa/search?q=${encodeURIComponent(sci)}`, ...ext } }),
     );
+  }
+
+  /** Save (in this browser) and copy the link. */
+  private speciesActions(box: HTMLElement, id: number, name: string, sci: string) {
+    const save = h('button', { class: 'btn small quiet save', attrs: { 'aria-pressed': String(isSaved(id)) } });
+    const label = () => { const on = save.getAttribute('aria-pressed') === 'true'; save.textContent = on ? tx('★ Saved') : tx('☆ Save'); };
+    label();
+    save.addEventListener('click', () => { save.setAttribute('aria-pressed', String(toggleSaved({ id, name, sci }))); label(); });
+    const copy = h('button', { class: 'btn small quiet', text: tx('Copy link') });
+    copy.addEventListener('click', async () => {
+      const ok = await navigator.clipboard?.writeText(location.href).then(() => true, () => false);
+      copy.textContent = ok ? tx('Link copied') : location.href;
+      setTimeout(() => { copy.textContent = tx('Copy link'); }, 2500);
+    });
+    box.replaceChildren(save, copy);
+  }
+
+  /** More photos: iNaturalist's best-liked ones of the animal itself, else any from GBIF (open licences only); each
+   *  opens full screen. */
+  private async renderStrip(box: HTMLElement, shots: Shot[], id: number, sci: string, who: string, signal: AbortSignal, t: number) {
+    let photos = await api.inatPhotos(sci, 8, signal).catch(() => [] as api.Photo[]);
+    if (photos.length < 2) photos = await api.gbifPhotos(id, 8, signal).catch(() => []);
+    if (t !== this.token || photos.length < 2) return;
+    const base = shots.length ? 1 : 0;
+    photos.forEach((p, i) => {
+      shots[base + i] = { src: [p.url.replace('/medium.', '/large.'), p.url], credit: `${p.credit}, ${p.licence}, iNaturalist`, href: p.page, alt: who };
+      const b = h('button', { class: 'strip-shot', attrs: { 'aria-label': tx('Photo {0} of {1}', base + i + 1, base + photos.length) } });
+      loadPhoto(b, [p.url.replace('/medium.', '/small.'), p.url], '', false);
+      b.addEventListener('click', () => openLightbox(shots, base + i));
+      box.append(h('li', {}, b));
+    });
+    box.hidden = false;
+  }
+
+  /** Opened from a place: when in the year it is recorded there, and how recently. */
+  private async renderInArea(box: HTMLElement, id: number, where: api.Where, signal: AbortSignal, t: number) {
+    const [m, y] = await Promise.all([api.gbifFacet({ taxonKey: id, ...where }, 'month', 12, signal).catch(() => []), api.gbifFacet({ taxonKey: id, ...where }, 'year', 400, signal).catch(() => [])]);
+    if (t !== this.token) return;
+    const months = monthsFromFacet(m), n = months.reduce((a, b) => a + b, 0);
+    const years = y.map((x) => Number(x.name)).filter((x) => x >= 1758 && x <= new Date().getUTCFullYear());
+    if (!n && !years.length) return;
+    box.append(h('h3', { text: tx('In this area') }));
+    if (years.length) {
+      const last = Math.max(...years), recs = y.reduce((a, b) => a + b.count, 0);
+      box.append(h('p', { text: tx('{0} here; the latest from {1}.', tn(recs, '{0} record', '{0} records'), last) }));
+    }
+    if (n >= 12) box.append(monthChart(months, tx('Records here by month')), h('p', { class: 'fine', text: seasonLine(months, tx('Here')) }));
+    box.hidden = false;
+  }
+
+  /** Its closest relatives on record: others in the genus (or the family), most recorded first, each one click away. */
+  private async renderRelatives(box: HTMLElement, sp: api.GbifSpecies, signal: AbortSignal, t: number) {
+    const r = await api.gbifRelatives(sp, 8, signal).catch(() => null);
+    if (t !== this.token || !r || !r.list.length) return;
+    const grid = h('ul', { class: 'mosaic small' });
+    box.append(h('h3', { text: r.by === 'genus' ? tx('Relatives in the genus {0}', sp.genus ?? '') : tx('Relatives in the family {0}', sp.family ?? '') }), grid);
+    box.hidden = false;
+    const group = groupOfKeys(sp.classKey, sp.phylumKey, sp.orderKey);
+    this.fillTiles(t, grid, r.list.map((x) => ({ key: x.key, records: x.records, group })), signal);
   }
 
   /** From the deep sea to the mountain tops: where along the vertical its records lie. */
@@ -713,6 +788,32 @@ export class Panel {
   private renderTools(box: HTMLElement, id: number, sci: string, who: string, signal: AbortSignal, t: number) {
     const shiftBtn = h('button', { class: 'btn small quiet', text: tx('Then and now'), attrs: { 'aria-pressed': 'false' } });
     const cmpBtn = h('button', { class: 'btn small quiet', text: tx('Compare with another species') });
+    const YEAR = new Date().getUTCFullYear(), FIRST = 1900;
+    const yFrom = h('input', { attrs: { type: 'range', min: FIRST, max: YEAR, value: FIRST, step: 1, 'aria-label': tx('From year') } }) as HTMLInputElement;
+    const yTo = h('input', { attrs: { type: 'range', min: FIRST, max: YEAR, value: YEAR, step: 1, 'aria-label': tx('To year') } }) as HTMLInputElement;
+    const yText = h('span', { class: 'yr-text' });
+    const yCount = h('p', { class: 'fine yr-count' });
+    let yTimer = 0, yAsk = 0;
+    const years = () => {
+      let a = Number(yFrom.value), b = Number(yTo.value);
+      if (a > b) [a, b] = [b, a];
+      const all = a === FIRST && b === YEAR;
+      yText.textContent = all ? tx('All years') : `${a}–${b}`;
+      clearTimeout(yTimer);
+      yTimer = window.setTimeout(async () => {
+        on = false; shiftBtn.setAttribute('aria-pressed', 'false'); out.replaceChildren();
+        this.host.showRanges([all ? { key: id, mode: 'all' } : { key: id, mode: 'years', from: a, to: b }]);
+        const my = ++yAsk;
+        yCount.textContent = all ? '' : tx('Counting…');
+        if (all) return;
+        const n = await api.gbifCount({ taxonKey: id, year: `${a},${b}` }, signal).catch(() => null);
+        if (my === yAsk && t === this.token) yCount.textContent = n == null ? '' : tx('{0} from {1} to {2}.', tn(n, '{0} record', '{0} records'), a, b);
+      }, 350);
+    };
+    yFrom.addEventListener('input', years); yTo.addEventListener('input', years);
+    years();
+    box.append(h('div', { class: 'year-range' }, h('p', { class: 'yr-title' }, h('span', { text: tx('Records on the globe, by year') }), yText),
+      h('div', { class: 'yr-sliders' }, yFrom, yTo), yCount));
     const out = h('div', { class: 'shift-out' });
     box.append(h('div', { class: 'btn-row' }, shiftBtn, cmpBtn), out,
       h('p', { class: 'fine cite', text: tx('Cite: ') + `GBIF.org (${new Date().toISOString().slice(0, 10)}) ${sci}, GBIF Backbone Taxonomy key ${id}, occurrences via https://www.gbif.org/species/${id}` }));
