@@ -15,6 +15,8 @@ export interface JourneyHost {
   setOverlay(source: Overlay, fc: GeoJSON.FeatureCollection | null): void;
   fitTo(points: [number, number][]): void;
   dimRange(dim: boolean): void;
+  /** One month of a species' records on the globe; null brings the all-year range back. */
+  showMonth(key: number | null, month: number | null): void;
   base: string;
 }
 
@@ -63,7 +65,8 @@ export interface JourneyOpts { id: number; commonName: string; sci: string; name
 export function renderJourneys(o: JourneyOpts, mount: HTMLElement, host: JourneyHost, alive: () => boolean): () => void {
   let stopped = false;
   let raf = 0;
-  const cleanup = () => { stopped = true; cancelAnimationFrame(raf); for (const x of ['micoSites', 'micoRoutes', 'tracks', 'heads'] as const) host.setOverlay(x, null); host.dimRange(false); };
+  let monthTimer = 0;
+  const cleanup = () => { stopped = true; cancelAnimationFrame(raf); for (const x of ['micoSites', 'micoRoutes', 'tracks', 'heads'] as const) host.setOverlay(x, null); host.dimRange(false); clearInterval(monthTimer); host.showMonth(null, null); };
   const ok = () => alive() && !stopped;
   const travel = h('section', { class: 'journeys', attrs: { hidden: true } }, h('h3', { text: L('How it travels', 'Qanday sayohat qiladi') }));
   const when = h('section', { class: 'seasons' }, h('h3', { text: L('When it is recorded', 'Qachon qayd etilgan') }), h('p', { class: 'fine', text: L('Loading…', 'Yuklanmoqda…') }));
@@ -184,6 +187,34 @@ export function renderJourneys(o: JourneyOpts, mount: HTMLElement, host: Journey
         h('a', { text: 'Bentley et al. 2025', attrs: { href: 'https://doi.org/10.1038/s41467-025-59271-7', ...ext } }), ', CC0.'));
   }).catch(() => {});
 
+  // ---- the year on the globe: where it is recorded month by month (monarchs north in summer, Mexico in winter) ----
+  const yearOnGlobe = () => {
+    let month = 0, playing = false;
+    const label = h('span', { class: 'month-now', attrs: { 'aria-live': 'polite' } });
+    const slider = h('input', { attrs: { type: 'range', min: '1', max: '12', step: '1', value: '1', 'aria-label': L('Month shown on the globe', 'Globusda koʻrsatilgan oy') } }) as HTMLInputElement;
+    const play = h('button', { class: 'btn small', text: L('Play the year', 'Yilni ijro etish') });
+    const stop = h('button', { class: 'link-btn', text: L('Back to all year', 'Butun yilga qaytish'), attrs: { hidden: true } });
+    const go = (m: number) => { month = m; slider.value = String(m); label.textContent = FULL_MONTHS[m - 1]; host.showMonth(o.id, m); stop.hidden = false; };
+    const pause = () => { playing = false; clearInterval(monthTimer); play.textContent = L('Play the year', 'Yilni ijro etish'); };
+    play.addEventListener('click', () => {
+      if (playing) { pause(); return; }
+      playing = true; play.textContent = L('Pause', 'Toʻxtatish');
+      go(month ? (month % 12) + 1 : 1);
+      monthTimer = window.setInterval(() => { if (!ok()) { pause(); return; } go((month % 12) + 1); }, 2200); // adhoc tiles take ~1 s each
+    });
+    slider.addEventListener('input', () => { pause(); go(Number(slider.value)); });
+    stop.addEventListener('click', () => { pause(); month = 0; label.textContent = ''; stop.hidden = true; host.showMonth(null, null); });
+    // the month bars above are buttons into the same view
+    queueMicrotask(() => when.querySelectorAll<HTMLElement>('.months li').forEach((li, i) => {
+      li.classList.add('pick');
+      li.addEventListener('click', () => { pause(); go((i % 12) + 1); });
+    }));
+    return h('div', { class: 'year-globe' },
+      h('p', { class: 'yg-title', text: L('The year on the globe', 'Yil globusda') }),
+      h('div', { class: 'yg-row' }, play, slider, label), stop,
+      h('p', { class: 'fine', text: L('Each month shows the records made in that month, in any year (dots, from a live GBIF search, so a month can take a moment). Where they move with the seasons, you see it: monarch butterflies north in summer and in Mexico in winter.', 'Har oy oʻsha oyda, istalgan yilda qilingan yozuvlarni koʻrsatadi. Fasllar bilan koʻchsa, koʻrinadi: monarx kapalaklari yozda shimolda, qishda Meksikada.') }));
+  };
+
   // ---- seasons and decades ----
   Promise.all([
     api.gbifFacet({ taxonKey: o.id, decimalLatitude: '0,90' }, 'month', 12, o.signal).catch(() => []),
@@ -193,6 +224,7 @@ export function renderJourneys(o: JourneyOpts, mount: HTMLElement, host: Journey
   ]).then(([n, s, y]) => {
     if (!ok()) return;
     renderSeasons(when, monthsFromFacet(n), monthsFromFacet(s), decadeCounts(y.map((x) => ({ year: Number(x.name), records: x.count }))));
+    if (monthsFromFacet(n).reduce((a, b) => a + b, 0) + monthsFromFacet(s).reduce((a, b) => a + b, 0) >= 30) when.append(yearOnGlobe());
   });
   return cleanup;
 }

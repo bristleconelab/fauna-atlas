@@ -5,7 +5,7 @@ import type { ExpressionSpecification, GeoJSONSource, LayerSpecification, MapMou
 import 'maplibre-gl/dist/maplibre-gl.css';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { bboxRing, frameOf, type BBox } from './geo';
-import { gbifTiles } from './api';
+import { gbifAdhocTiles, gbifTiles } from './api';
 import { capped, fadePolarOverlays, registerPoleCaps } from './polecap';
 import { h, fmt, plural } from './dom';
 import { L } from './i18n';
@@ -249,6 +249,34 @@ export class Globe {
     await this.ready;
     for (const id of this.rangeLayers) if (this.map.getLayer(id)) this.map.setPaintProperty(id, 'raster-opacity', dim ? 0.25 : this.rangeOpacity.get(id) ?? 0.8);
   }
+
+  /** The year on the globe: a GBIF adhoc layer per month for a species (records of that month in any year; the density
+   *  tiles ignore a month filter). The month shown and the next one are loaded, the next invisibly, so playing on is
+   *  smooth without asking GBIF for all twelve at once. null removes them and brings the all-year range back. */
+  async showMonth(key: number | null, month: number | null) {
+    await this.ready;
+    const drop = () => { for (const id of this.monthLayers.splice(0)) { this.map.removeLayer(id); this.map.removeSource(id); } };
+    if (key == null || month == null) {
+      drop();
+      this.monthKey = null;
+      for (const id of this.rangeLayers) if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', 'visible');
+      return;
+    }
+    if (this.monthKey !== key) { drop(); this.monthKey = key; }
+    const ensure = (m: number) => {
+      const id = `mon-${m}`;
+      if (this.map.getLayer(id)) return;
+      this.map.addSource(id, { type: 'raster', tiles: [gbifAdhocTiles({ taxonKey: key, month: m })], tileSize: 256, maxzoom: 4 });
+      this.map.addLayer({ id, type: 'raster', source: id, paint: { 'raster-opacity': 0, 'raster-fade-duration': 0, 'raster-opacity-transition': { duration: 250 } } }, 'borders');
+      this.monthLayers.push(id);
+    };
+    ensure(month);
+    ensure((month % 12) + 1);
+    for (const id of this.rangeLayers) if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', 'none');
+    for (const id of this.monthLayers) this.map.setPaintProperty(id, 'raster-opacity', id === `mon-${month}` ? 0.95 : 0);
+  }
+  private monthLayers: string[] = [];
+  private monthKey: number | null = null;
 
   /** Cells where both compared species are recorded; null clears them. */
   async showOverlap(fc: GeoJSON.FeatureCollection | null) {

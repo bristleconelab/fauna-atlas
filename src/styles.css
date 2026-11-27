@@ -581,3 +581,12 @@ body.drawer-open #hint { display: none; }
 .list-note { margin: 0 0 8px; min-height: 0; }
 .list-note:empty { display: none; }
 .mosaic-empty { grid-column: 1 / -1; color: var(--muted); font-size: 14px; padding: 12px 2px; }
+
+/* ---------- the year on the globe ---------- */
+.year-globe { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: #e7efe4; }
+.yg-title { margin: 0 0 6px; font-weight: 650; }
+.yg-row { display: grid; grid-template-columns: auto 1fr 5.5rem; gap: 10px; align-items: center; }
+.yg-row input[type='range'] { width: 100%; accent-color: var(--accent); }
+.month-now { font-weight: 600; font-variant-numeric: tabular-nums; }
+.months li.pick { cursor: pointer; }
+.months li.pick:hover .mbar { filter: brightness(1.25); }

@@ -289,6 +289,13 @@ export function licenceShort(text: string): string {
   return ['CC BY', nc && 'NC', nd ? 'ND' : sa && 'SA'].filter(Boolean).join('-');
 }
 
+/** GBIF map tiles for a filter the density tiles ignore (month: checked 2026-11-27, the density tile of a month is
+ *  byte for byte the all-year one). The adhoc map runs an occurrence search per tile, so it is slower and shares the
+ *  search rate limit: callers load few of them. */
+export function gbifAdhocTiles(filter: Record<string, string | number>, style = 'classic-noborder.poly'): string {
+  return `https://api.gbif.org/v2/map/occurrence/adhoc/{z}/{x}/{y}@1x.png?${qs({ srs: 'EPSG:3857', style, basisOfRecord: WILD_BASIS, hasGeospatialIssue: 'false', ...filter })}`;
+}
+
 /** GBIF density map tiles, for a species, a period or all animals. Square cells, not hexagons: a power-of-two square
  *  grid nests from one zoom to the next, so the globe (which mixes tile zooms across the view) shows no cut cells at
  *  tile edges. `squareSize` is in GBIF's 4096-unit tile space (64 = 8 px of the 512-px tile, 4 px on screen; near the

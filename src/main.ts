@@ -64,6 +64,7 @@ const panel = new Panel(panelEl, $('#panel .panel-body'), {
     setOverlay: (src, fc) => globe.setOverlay(src, fc),
     fitTo: (p) => globe.fitTo(p),
     dimRange: (d) => globe.dimRange(d),
+    showMonth: (k, m) => globe.showMonth(k, m),
     base,
   },
   focusSearch: (placeholder) => {
