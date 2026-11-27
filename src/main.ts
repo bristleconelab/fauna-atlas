@@ -206,7 +206,7 @@ $('#migrations-open').addEventListener('click', async () => {
       if (!mine.length) continue;
       const ul = h('ul', {});
       for (const [id, sp] of mine) {
-        const b = h('button', { class: 'mig', attrs: { 'data-q': `${sp.common} ${sp.scientific}`.toLowerCase(), 'data-sci': sp.scientific.toLowerCase() } },
+        const b = h('button', { class: 'mig', attrs: { 'data-q': `${sp.common} ${sp.scientific}`.toLowerCase(), 'data-sci': sp.scientific.toLowerCase(), 'data-name': sp.scientific } },
           h('span', { class: 'mig-thumb', attrs: { 'aria-hidden': 'true' } }),
           h('span', { class: 'mig-name', text: sp.common }), h('span', { class: 'latin', text: sp.scientific }),
           h('span', { class: 'mig-n', text: sp.routes ? L(`${plural(sp.sites, 'place')}, ${plural(sp.routes, 'link')}`, `${fmt(sp.sites)} ta joy, ${fmt(sp.routes)} ta bogʻlanish`) : L(plural(sp.sites, 'place'), `${fmt(sp.sites)} ta joy`) }));
@@ -226,17 +226,29 @@ $('#migrations-open').addEventListener('click', async () => {
       }
       list.append(h('section', { class: 'mig-group' }, h('h3', { text: `${GROUP_NAME[g]} (${mine.length})` }), ul));
     }
-    // a photo beside each name (Wikidata by scientific name; lazy, so only the visible rows load their image)
-    api.photosByName(items.map(([, sp]) => sp.scientific)).then((photos) => {
-      list.querySelectorAll<HTMLElement>('.mig').forEach((b) => {
+    // a photo beside each name, from the site itself: the animal pages' photos (data/photos/<key>.webp) and, for
+    // MiCO animals without a page, data/mico/photos/ (scripts/fetch_mico_photos.py). Wikidata only for the rest.
+    const own = await api.knownIndex(base);
+    const micoPhotos: Record<string, [string, string, string, string]> = await fetch(`${base}data/mico/photos.json`).then((r) => (r.ok ? r.json() : {})).catch(() => ({}));
+    const byName = new Map(Object.entries(own).filter(([, v]) => v[3]).map(([k, v]) => [v[2].toLowerCase(), k]));
+    const put = (b: HTMLElement, src: string, title: string, fallback?: string) => {
+      const img = h('img', { attrs: { src, alt: '', loading: 'lazy', width: 52, height: 52, title } }) as HTMLImageElement;
+      img.addEventListener('load', () => img.classList.add('in'));
+      if (fallback) img.addEventListener('error', () => { if (img.src !== fallback) img.src = fallback; }, { once: true });
+      b.querySelector('.mig-thumb')!.append(img);
+    };
+    const rest: HTMLElement[] = [];
+    list.querySelectorAll<HTMLElement>('.mig').forEach((b) => {
+      const sci = b.dataset.sci!, key = byName.get(sci), mp = micoPhotos[sci];
+      if (key) put(b, `${base}data/photos/${key}.webp`, `${L('Photo', 'Surat')}: ${own[key][3]}, ${own[key][4]}`);
+      else if (mp) put(b, `${base}data/mico/photos/${mp[0]}`, `${L('Photo', 'Surat')}: ${mp[1]}, ${mp[2]}`);
+      else rest.push(b);
+    });
+    if (rest.length) api.photosByName(rest.map((b) => b.dataset.name!)).then((photos) => { // Wikidata matches names as written
+      for (const b of rest) {
         const file = photos.get(b.dataset.sci!);
-        if (!file) return;
-        const [src, fallback] = commonsThumbs(file, 120);
-        const img = h('img', { attrs: { src, alt: '', loading: 'lazy', width: 52, height: 52 } }) as HTMLImageElement;
-        img.addEventListener('load', () => img.classList.add('in'));
-        img.addEventListener('error', () => { if (fallback && img.src !== fallback) img.src = fallback; }, { once: true });
-        b.querySelector('.mig-thumb')!.append(img);
-      });
+        if (file) { const [src, fallback] = commonsThumbs(file, 120); put(b, src, L('Photo: Wikimedia Commons', 'Surat: Wikimedia Commons'), fallback); }
+      }
     }).catch(() => {});
   } catch {
     list.append(h('p', { class: 'fine', text: L('The list did not load. Reload the page to try again.', 'Roʻyxat yuklanmadi. Sahifani qayta yuklang.') }));

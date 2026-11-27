@@ -380,19 +380,48 @@ export class Panel {
     const rangeNote = h('p', { class: 'fine', text: L('Coloured squares on the globe: where it has been recorded (GBIF).', 'Globusdagi rangli kvadratchalar: u qayd etilgan joylar (GBIF).') });
     status.hidden = true;
     this.body.append(...[nav, figure, name, latin, lineage, status, about, rangeNote, facts, bodyBox, vertical, tools, journeys, links].filter((x): x is HTMLElement => !!x));
+    // The well-known animals open at once from the site's own index and photo (milliseconds), while GBIF and Wikidata
+    // answer (seconds, from some places much longer); the large photo replaces the small one once it has loaded.
+    const ownK = (await api.knownIndex(import.meta.env.BASE_URL))[id];
+    if (t !== this.token) return;
+    let quick = false;
+    if (ownK) {
+      name.textContent = lang === 'uz' ? ownK[1] || ownK[0] : ownK[0];
+      latin.textContent = ownK[2];
+      if (ownK[3]) {
+        const qf = h('div', { class: 'hero-frame' });
+        figure.append(qf, h('figcaption', { text: `${L('Photo', 'Surat')}: ${ownK[3]}, ${ownK[4]}` }));
+        loadPhoto(qf, [`${import.meta.env.BASE_URL}data/photos/${id}.webp`], L(`Photo of ${name.textContent}`, `${name.textContent} surati`), true);
+        quick = true;
+      }
+    }
 
-    const [sp, total, red, info] = await Promise.all([
+    const [sp0, total, red0, info] = await Promise.all([
       api.gbifSpecies(id, signal).catch(() => null),
       api.gbifCount({ taxonKey: id }, signal).catch(() => null),
       api.gbifRedList(id, signal),
       api.wikidataByAphia([id], undefined, this.lang, signal).then((m) => m.get(id) ?? null).catch(() => null),
     ]);
     if (t !== this.token) return;
+    // GBIF busy (its rate limit can hold an address back for a minute; getJSON has already retried with pauses): the
+    // site's own index for the well-known animals, so the page still opens with their name and Red List status
+    let sp = sp0, red = red0, degraded = false;
+    if (!sp) {
+      const k = (await api.knownIndex(import.meta.env.BASE_URL))[id];
+      if (t !== this.token) return;
+      if (k) {
+        sp = { key: id, scientificName: k[2], canonicalName: k[2], vernacularName: k[0] };
+        red = red ?? (k[6] || null);
+        degraded = true;
+      }
+    }
     if (!sp) {
       name.textContent = L('This species did not load', 'Bu tur yuklanmadi');
-      rangeNote.textContent = L('GBIF did not answer. Check the connection and open the species again.', 'GBIF javob bermadi. Internetni tekshirib, turni qayta oching.');
+      rangeNote.textContent = L('GBIF did not answer; it may be busy for a minute.', 'GBIF javob bermadi; u bir daqiqa band boʻlishi mumkin.');
+      rangeNote.after(h('button', { class: 'btn', text: L('Try again', 'Qayta urinish'), on: { click: () => this.showSpecies(id, fromPlace) } }));
       return;
     }
+    if (degraded) rangeNote.after(h('p', { class: 'fine', text: L('GBIF is busy, so some details (family, record counts) are missing; open the species again in a minute for all of them.', 'GBIF band, shuning uchun baʼzi maʼlumotlar (oila, yozuvlar soni) yoʻq; hammasini koʻrish uchun turni bir daqiqadan keyin qayta oching.') }));
     const sci = sp.canonicalName ?? sp.scientificName;
     let wiki: WikiInfo = { ...(info ?? {}) };
     if (!wiki.image) {
@@ -422,10 +451,12 @@ export class Panel {
 
     const frame = h('div', { class: 'hero-frame' });
     const cap = h('figcaption', { text: '' });
+    // with the quick photo showing, the large one goes in only once it has loaded (no blank frame in between)
+    const show = () => figure.replaceChildren(frame, cap);
     if (wiki.image) {
-      figure.append(frame, cap);
+      if (!quick) show();
       cap.textContent = L('Photo: Wikimedia Commons', 'Surat: Wikimedia Commons');
-      loadPhoto(frame, commonsThumbs(wiki.image, 960), L(`Photo of ${name.textContent}`, `${name.textContent} surati`), true);
+      loadPhoto(frame, commonsThumbs(wiki.image, 960), L(`Photo of ${name.textContent}`, `${name.textContent} surati`), true, () => { if (quick && t === this.token) show(); });
       api.commonsCredits([wiki.image]).then((c) => {
         const cr = c.get(wiki.image!);
         if (cr && t === this.token) cap.replaceChildren(L('Photo: ', 'Surat: '), h('a', { text: `${cr.artist}, ${cr.licence}`, attrs: { href: cr.page, ...ext } }));
@@ -434,10 +465,10 @@ export class Panel {
       const p = await api.gbifPhoto(id, signal).catch(() => null);
       if (t !== this.token) return;
       if (p) {
-        figure.append(frame, cap);
-        loadPhoto(frame, [p.url.replace('/medium.', '/large.'), p.url], L(`Photo of ${name.textContent}`, `${name.textContent} surati`), true);
+        if (!quick) show();
+        loadPhoto(frame, [p.url.replace('/medium.', '/large.'), p.url], L(`Photo of ${name.textContent}`, `${name.textContent} surati`), true, () => { if (quick && t === this.token) show(); });
         cap.replaceChildren(L('Photo: ', 'Surat: '), h('a', { text: `${p.credit}, ${p.licence}, iNaturalist`, attrs: { href: p.page, ...ext } }));
-      } else figure.hidden = true;
+      } else if (!quick) figure.hidden = true;
     }
 
     const title = wiki.article ? articleTitle(wiki.article) : null;
