@@ -678,3 +678,5 @@ body.panel-open .parks-legend { display: none; }
 #saved.drawer[open] { display: flex; }
 #saved .saved-list { flex: 1; min-height: 0; }
 @media (max-width: 759px) { #saved.drawer { height: 70vh; } }
+#map .proj-btn { font: 700 11px var(--sans); color: #15303c; }
+#map .proj-btn[aria-pressed='true'] { color: #b3441a; }

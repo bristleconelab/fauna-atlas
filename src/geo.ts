@@ -53,19 +53,6 @@ export function formatLatLon(lat: number, lon: number): string {
   return `${Math.abs(lat).toFixed(1)}° ${ns}, ${Math.abs(lon).toFixed(1)}° ${ew}`;
 }
 
-/** Record-weighted centre of a set of cells, with longitudes averaged on the circle (ranges that cross 180°). */
-export function weightedCentre(cells: { bbox: BBox; n: number }[]): { lon: number; lat: number } | null {
-  let sx = 0, sy = 0, sl = 0, w = 0;
-  for (const c of cells) {
-    const lon = ((c.bbox.west + c.bbox.east) / 2) * (Math.PI / 180);
-    const lat = (c.bbox.south + c.bbox.north) / 2;
-    const k = Math.log10(1 + c.n);
-    sx += Math.cos(lon) * k; sy += Math.sin(lon) * k; sl += lat * k; w += k;
-  }
-  if (w === 0) return null;
-  return { lon: Math.atan2(sy, sx) * (180 / Math.PI), lat: sl / w };
-}
-
 /** Points along the great circle from a to b (lon/lat degrees), longitudes unwrapped so the line never jumps 360°. */
 export function greatCircle(a: [number, number], b: [number, number], steps = 32): [number, number][] {
   const r = Math.PI / 180;
@@ -190,4 +177,15 @@ export function ringsBox(rings: Ring[]): BBox | null {
 export function ringsAreaKm2(rings: Ring[]): number {
   const R = 6371.0088, r = Math.PI / 180;
   return rings.reduce((sum, ring) => sum + Math.abs(ringSignedArea(ring.map(([x, y]) => [x * r * R, Math.sin(y * r) * R]))), 0);
+}
+
+/** Centre of a range from its occupied cells, each weighted by its area (Mercator cells shrink towards the poles, so
+ *  counting cells would pull the centre poleward); longitudes averaged on the circle. */
+export function rangeCentre(cells: { bbox: BBox }[]): { lon: number; lat: number } | null {
+  let sx = 0, sy = 0, sl = 0, w = 0;
+  for (const c of cells) {
+    const a = cellAreaKm2(c.bbox), lon = ((c.bbox.west + c.bbox.east) / 2) * (Math.PI / 180);
+    sx += Math.cos(lon) * a; sy += Math.sin(lon) * a; sl += ((c.bbox.south + c.bbox.north) / 2) * a; w += a;
+  }
+  return w ? { lon: Math.atan2(sy, sx) * (180 / Math.PI), lat: sl / w } : null;
 }

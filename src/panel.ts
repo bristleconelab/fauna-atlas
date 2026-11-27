@@ -745,7 +745,11 @@ export class Panel {
     box.append(h('h3', { text: tx('From the deep sea to the mountains') }),
       h('p', { text: tx('Usually between {0} and {1}: the middle half of {2} with a height or a depth.', where(r.from), where(r.to), tn(r.records, '{0} record', '{0} records')) }));
     const col = h('ol', { class: 'column vertical', attrs: { 'aria-label': tx('Records by height and depth') } });
+    // only the zones from the highest to the lowest one with records: a land animal gets no column of empty sea rows
+    const used = counts.map((c, i) => (c > 0 ? i : -1)).filter((i) => i >= 0);
+    const top = Math.min(...used), bottom = Math.max(...used);
     ZONES.forEach((z, i) => {
+      if (i < top || i > bottom) return;
       const usual = r.from < z.to && r.to > z.from;
       col.append(h('li', { class: `${usual ? 'usual ' : ''}${z.param === 'depth' ? 'sea' : 'land'}` },
         h('span', { class: 'band', text: tx(z.en) }),
@@ -761,6 +765,7 @@ export class Panel {
     if (tr.lengthM) parts.push(tx('up to {0} long', formatLength(tr.lengthM)));
     if (tr.massKg) parts.push(tx('up to {0}', formatMass(tr.massKg)));
     if (tr.lifeYears) parts.push(tx('lives up to {0}', formatLife(tr.lifeYears)));
+    if (tr.wingspanM) parts.push(tx('wingspan up to {0}', formatLength(tr.wingspanM)));
     if (!parts.length && !audio) return;
     box.hidden = false;
     box.append(h('h3', { text: tx('Size and voice') }));

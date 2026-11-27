@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bboxToWkt, formatLatLon, geohash, geohashBounds, greatCircle, weightedCentre } from '../src/geo';
+import { bboxToWkt, formatLatLon, geohash, geohashBounds, greatCircle } from '../src/geo';
 
 describe('geohash', () => {
   it('matches known reference hashes', () => {
@@ -30,10 +30,7 @@ describe('helpers', () => {
     expect(formatLatLon(-12.34, -45.67)).toBe('12.3° S, 45.7° W');
   });
   it('averages longitudes on the circle, so a range across 180° is centred near 180°, not 0°', () => {
-    const c = weightedCentre([
-      { bbox: { west: 178, east: 179, south: 0, north: 1 }, n: 10 },
-      { bbox: { west: -179, east: -178, south: 0, north: 1 }, n: 10 },
-    ])!;
+    const c = rangeCentre([{ bbox: { west: 178, east: 179, south: 0, north: 1 } }, { bbox: { west: -179, east: -178, south: 0, north: 1 } }])!;
     expect(Math.abs(Math.abs(c.lon) - 180)).toBeLessThan(1);
     expect(c.lat).toBeCloseTo(0.5);
   });
@@ -75,5 +72,16 @@ describe('shapes for GBIF', () => {
   it('measures area on the sphere: a 1° square at the equator is about 12,364 km²', () => {
     expect(ringsAreaKm2([[[0, 0], [1, 0], [1, 1], [0, 1]]])).toBeGreaterThan(12300);
     expect(ringsAreaKm2([[[0, 0], [1, 0], [1, 1], [0, 1]]])).toBeLessThan(12400);
+  });
+});
+
+import { rangeCentre } from '../src/geo';
+describe('range centre', () => {
+  it('weights cells by area and wraps longitude', () => {
+    const c = rangeCentre([{ bbox: { west: 170, east: 180, south: 0, north: 10 } }, { bbox: { west: -180, east: -170, south: 0, north: 10 } }])!;
+    expect(Math.abs(Math.abs(c.lon) - 180)).toBeLessThan(1e-6);
+    // a big equatorial cell outweighs a same-degree cell at 80° N
+    const d = rangeCentre([{ bbox: { west: 0, east: 10, south: 0, north: 10 } }, { bbox: { west: 0, east: 10, south: 75, north: 85 } }])!;
+    expect(d.lat).toBeLessThan(42.5);
   });
 });

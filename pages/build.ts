@@ -51,7 +51,18 @@ export function slugify(s: string): string {
  *  a bracketed note (Branta bernicla's label was "ensis (bird)"); then the Wikipedia title without its "(goose)"
  *  part; then GBIF's vernacular name, which is often a list ("Common wasp, Common yellow jacket"): the entry the
  *  Wikipedia summary uses, else the first; else the scientific name. */
+/** Names that follow GBIF's taxon, where Wikidata's label names only part of it. GBIF's Felis silvestris includes the
+ *  African wildcat (F. s. lybica): its 60 Kenyan records are real wildcats, not "European wildcats". */
+export const NAME_FIX: Record<string, string> = { 'Felis silvestris': 'Wildcat' };
+/** Old page addresses of renamed animals, redirected (Cloudflare Pages _redirects) so links and search results hold. */
+export const RENAMED: Record<string, string> = { 'european-wildcat': 'wildcat' };
+/** Country records shown false on inspection, left off the country lists. Whale shark in Antarctica: all 16 records are
+ *  satellite-tag positions at 62-64° S in the Weddell Sea from one dataset (Ningaloo Outlook Whale Shark tracking,
+ *  12495db0-7564-4a7c-bce2-2501efe4fc21), checked 2026-11-27; whale sharks live in warm seas. */
+export const NOT_IN: Record<string, string[]> = { 'Rhincodon typus': ['AQ'] };
+
 export function speciesName(r: Pick<SpeciesRow, 'labelEn' | 'sci' | 'wiki' | 'vernacular'>): string {
+  if (NAME_FIX[r.sci]) return NAME_FIX[r.sci];
   const sci = r.sci.toLowerCase();
   const genus = sci.split(' ')[0];
   // not the scientific name, nor a spelling of it (Wikidata "Herpestes edwardsii" for GBIF "Herpestes edwardsi")
@@ -97,7 +108,7 @@ export const SEEN_MIN = 10, SEEN_SHARE = 0.001, SEEN_MANY = 50;
  *  (a water buffalo or a llama is not an animal "of" the country it is kept in). */
 export const DOMESTIC = new Set(['Bubalus bubalis', 'Cavia porcellus', 'Bombyx mori', 'Lama glama', 'Vicugna pacos', 'Camelus dromedarius', 'Gallus gallus', 'Equus africanus']);
 export function recordedIn(r: Pick<SpeciesRow, 'countries' | 'seen' | 'sci'>, iso: string): number {
-  if (DOMESTIC.has(r.sci)) return 0;
+  if (DOMESTIC.has(r.sci) || NOT_IN[r.sci]?.includes(iso)) return 0;
   const n = r.countries.find(([c]) => c === iso)?.[1] ?? 0;
   return n >= SEEN_MIN && (n >= SEEN_MANY || n >= SEEN_SHARE * (r.seen ?? 0)) ? n : 0;
 }
@@ -323,12 +334,23 @@ ${sections}
   });
 }
 
+const THREATENED_CODES = new Set(['CR', 'EN', 'VU']);
+/** A filter box over an index page's list (and, for animals, "threatened only"): a few lines of inline script; the
+ *  page stays a plain list without it. */
+function FILTER(placeholder: string, threat: boolean): string {
+  return `<form class="filter" role="search" onsubmit="return false"><input id="f" type="search" placeholder="${esc(placeholder)}" aria-label="Filter the list" autocomplete="off">${threat ? '<label><input id="fr" type="checkbox"> Threatened only</label>' : ''}<span id="fn" aria-live="polite"></span></form>
+<script>(()=>{const f=document.getElementById('f'),r=document.getElementById('fr'),n=document.getElementById('fn'),li=[...document.querySelectorAll('.names li')];
+const run=()=>{const q=f.value.trim().toLowerCase(),t=r&&r.checked;let k=0;for(const x of li){const ok=(!q||x.textContent.toLowerCase().includes(q)||(x.dataset.s||'').includes(q))&&(!t||x.dataset.r);x.hidden=!ok;if(ok)k++;}
+for(const s of document.querySelectorAll('section[id]'))s.hidden=!s.querySelector('li:not([hidden])');n.textContent=q||t?k+' shown':'';};f.addEventListener('input',run);if(r)r.addEventListener('change',run);})();</script>`;
+}
+
 export function animalsIndex(m: Model): string {
   const sections = GROUPS.map((g) => {
     const list = m.species.filter((s) => s.group === g.id).sort((a, b) => a.name.localeCompare(b.name));
-    return list.length ? `<section id="${g.id}"><h2>${esc(g.label)} <span class="n">${list.length}</span></h2><ul class="names">${list.map((s) => `<li><a href="/animals/${s.slug}/">${esc(s.name)}</a></li>`).join('')}</ul></section>` : '';
+    return list.length ? `<section id="${g.id}"><h2>${esc(g.label)} <span class="n">${list.length}</span></h2><ul class="names">${list.map((s) => `<li data-s="${esc(s.sci.toLowerCase())}"${s.redlist && THREATENED_CODES.has(s.redlist) ? ' data-r="1"' : ''}><a href="/animals/${s.slug}/">${esc(s.name)}</a></li>`).join('')}</ul></section>` : '';
   }).join('\n');
   const body = `<h1>Animals</h1><p class="lede">${fmt(m.species.length)} of the world's best-known animal species, each with where it has been recorded, a photo and facts. For any other animal, search on <a href="/">the globe</a>.</p>
+${FILTER('Filter: lion, owl, Panthera…', true)}
 <p class="jump">${GROUPS.filter((g) => m.species.some((s) => s.group === g.id)).map((g) => `<a href="#${g.id}">${esc(g.label)}</a>`).join(' · ')}</p>
 ${sections}`;
   return layout({
@@ -342,6 +364,7 @@ ${sections}`;
 export function placesIndex(m: Model): string {
   const list = [...m.places].sort((a, b) => a.name.localeCompare(b.name));
   const body = `<h1>Animals by country</h1><p class="lede">Which animals have been recorded in each of ${list.length} countries and territories, from GBIF.</p>
+${FILTER('Filter: Kenya, Brazil…', false)}
 <ul class="names">${list.map((p) => `<li><a href="/places/${p.slug}/">${esc(p.name)}</a> <span>${fmt(p.records)}</span></li>`).join('')}</ul>`;
   return layout({
     title: 'Animals by country: which animals live where | Fauna Atlas',
@@ -395,6 +418,7 @@ export function writePages(root: string, out: string): number {
   put('places/index.html', placesIndex(m));
   put('sitemap.xml', sitemap(m, S.fetched));
   put('data/known.json', knownIndex(m, (key) => existsSync(join(root, 'public/data/photos', `${key}.webp`))));
+  put('_redirects', Object.entries(RENAMED).map(([from, to]) => `/animals/${from}/ /animals/${to}/ 301`).join('\n') + '\n');
   put('data/places.json', JSON.stringify(Object.fromEntries(m.places.map((p) => [p.iso, p.slug]))));
   mkdirSync(join(out, 'static'), { recursive: true });
   copyFileSync(join(root, 'pages/pages.css'), join(out, 'static/pages.css'));

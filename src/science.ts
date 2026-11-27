@@ -56,23 +56,30 @@ const MASS_KG: Record<string, number> = { [Q('Q11570')]: 1, [Q('Q191118')]: 1000
 const LENGTH_M: Record<string, number> = { [Q('Q11573')]: 1, [Q('Q174728')]: 0.01, [Q('Q174789')]: 0.001, [Q('Q3710')]: 0.3048, [Q('Q218593')]: 0.0254, [Q('Q828224')]: 1000 };
 const TIME_YEARS: Record<string, number> = { [Q('Q577')]: 1, [Q('Q573')]: 1 / 365.25, [Q('Q5151')]: 1 / 12, [Q('Q23387')]: 7 / 365.25 };
 
-export interface Traits { massKg?: number; lengthM?: number; lifeYears?: number }
+export interface Traits { massKg?: number; lengthM?: number; lifeYears?: number; wingspanM?: number }
 
 /** Largest value of each quantity, in SI units. Wikidata often holds several values (adult, record, average); the
- *  largest is what "up to" means, and unknown units are skipped rather than guessed. */
+ *  largest is what "up to" means, and unknown units are skipped rather than guessed. Deprecated statements (marked
+ *  wrong by editors) never count; where editors marked some values preferred, only those count. */
 export function parseTraits(rows: Record<string, { value: string } | undefined>[]): Traits {
-  const best = (amt: string, unit: string, table: Record<string, number>) =>
-    rows.reduce<number | undefined>((m, r) => {
+  const rank = (r: Record<string, { value: string } | undefined>) => (r.rank?.value ?? '').replace(/^.*#/, '');
+  const best = (amt: string, unit: string, table: Record<string, number>) => {
+    const mine = rows.filter((r) => r[amt] && rank(r) !== 'DeprecatedRank');
+    const pool = mine.some((r) => rank(r) === 'PreferredRank') ? mine.filter((r) => rank(r) === 'PreferredRank') : mine;
+    return pool.reduce<number | undefined>((m, r) => {
       const a = Number(r[amt]?.value), f = table[r[unit]?.value ?? ''];
       if (!Number.isFinite(a) || !Number.isFinite(f) || a <= 0) return m;
       const v = a * f;
       return m == null || v > m ? v : m;
     }, undefined);
+  };
   const out: Traits = {};
   const m = best('massAmt', 'massUnit', MASS_KG), l = best('lenAmt', 'lenUnit', LENGTH_M), y = best('lifeAmt', 'lifeUnit', TIME_YEARS);
   if (m != null) out.massKg = m;
   if (l != null) out.lengthM = l;
   if (y != null) out.lifeYears = y;
+  const w = best('spanAmt', 'spanUnit', LENGTH_M);
+  if (w != null) out.wingspanM = w;
   return out;
 }
 
@@ -88,17 +95,8 @@ export function formatLength(m: number): string {
   return `${round2(m * 1000).toLocaleString('en-US')} mm`;
 }
 
-// ---------- range then and now ----------
+// ---------- ranges as cells ----------
 export interface Cell { bbox: BBox; n: number }
-
-/** Average distance from the equator of the squares where a species was recorded in two periods. Squares, not
- *  records, so a period with more surveys does not pull the answer towards where the surveys were. */
-export function rangeShift(then: Cell[], now: Cell[], minCells = 15): { thenLat: number; nowLat: number; shiftKm: number; thenCells: number; nowCells: number } | null {
-  if (then.length < minCells || now.length < minCells) return null;
-  const meanAbsLat = (cs: Cell[]) => cs.reduce((s, c) => s + Math.abs((c.bbox.south + c.bbox.north) / 2), 0) / cs.length;
-  const t = meanAbsLat(then), n = meanAbsLat(now);
-  return { thenLat: t, nowLat: n, shiftKm: Math.round((n - t) * 111.2), thenCells: then.length, nowCells: now.length };
-}
 
 // ---------- two ranges ----------
 const key = (b: BBox) => `${b.west.toFixed(3)},${b.south.toFixed(3)}`;
@@ -110,16 +108,6 @@ export function overlap(a: Cell[], b: Cell[]): { shared: number; onlyA: number; 
   let sharedKm2 = 0;
   for (const c of a) { const k = key(c.bbox); if (kb.has(k)) { sharedKeys.add(k); sharedKm2 += cellAreaKm2(c.bbox); } }
   return { shared: sharedKeys.size, onlyA: a.length - sharedKeys.size, onlyB: b.length - sharedKeys.size, sharedKm2: Math.round(sharedKm2), sharedKeys };
-}
-export const cellKey = key;
-
-/** Cells from an OBIS/GBIF grid answer. */
-export function cellsOf(fc: GeoJSON.FeatureCollection<GeoJSON.Polygon, { n: number }>): Cell[] {
-  return fc.features.map((f) => {
-    let west = Infinity, east = -Infinity, south = Infinity, north = -Infinity;
-    for (const [x, y] of f.geometry.coordinates[0]) { west = Math.min(west, x); east = Math.max(east, x); south = Math.min(south, y); north = Math.max(north, y); }
-    return { bbox: { west, east, south, north }, n: f.properties.n };
-  });
 }
 
 // ---------- export ----------

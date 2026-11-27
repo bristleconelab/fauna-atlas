@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chao1, formatLength, formatMass, overlap, parseTraits, rangeShift, toCsv } from '../src/science';
+import { chao1, formatLength, formatMass, overlap, parseTraits, toCsv } from '../src/science';
 import { geohashBounds } from '../src/geo';
 
 const W = (id: string) => ({ value: `http://www.wikidata.org/entity/${id}` });
@@ -48,12 +48,6 @@ describe('traits', () => {
 
 describe('ranges', () => {
   const cell = (gh: string) => ({ bbox: geohashBounds(gh), n: 1 });
-  const ring = (lat0: number) => Array.from({ length: 20 }, (_, i) => ({ bbox: { west: i * 2, east: i * 2 + 1.4, south: lat0, north: lat0 + 1.4 }, n: 3 }));
-  it('measures a move away from the equator by squares, not records', () => {
-    const r = rangeShift(ring(30), ring(33))!;
-    expect(r.shiftKm).toBeGreaterThan(320); expect(r.shiftKm).toBeLessThan(345);
-    expect(rangeShift(ring(30).slice(0, 5), ring(33))).toBeNull();
-  });
   it('finds shared squares and their area', () => {
     const o = overlap([cell('s00'), cell('s01')], [cell('s01'), cell('s02')]);
     expect(o.shared).toBe(1); expect(o.onlyA).toBe(1); expect(o.onlyB).toBe(1);
@@ -89,5 +83,19 @@ describe('range overlap on a Mercator grid', () => {
     expect(r.shared).toBe(1);
     expect(r.sharedKm2).toBeGreaterThan(24000); expect(r.sharedKm2).toBeLessThan(24600); // ~156 x 156 km at the equator: 24,446
     expect(r.jaccard).toBeCloseTo(1 / 3, 2);
+  });
+});
+
+import { parseTraits as pt } from '../src/science';
+describe('traits from Wikidata ranks', () => {
+  const v = (x: string) => ({ value: x });
+  const KG = 'http://www.wikidata.org/entity/Q11570', M = 'http://www.wikidata.org/entity/Q11573';
+  const R = (r: string) => v(`http://wikiba.se/ontology#${r}`);
+  it('drops deprecated values and keeps only preferred ones when there are any', () => {
+    expect(pt([{ massAmt: v('900'), massUnit: v(KG), rank: R('DeprecatedRank') }, { massAmt: v('90'), massUnit: v(KG), rank: R('NormalRank') }]).massKg).toBe(90);
+    expect(pt([{ massAmt: v('120'), massUnit: v(KG), rank: R('NormalRank') }, { massAmt: v('70'), massUnit: v(KG), rank: R('PreferredRank') }]).massKg).toBe(70);
+  });
+  it('reads the wingspan', () => {
+    expect(pt([{ spanAmt: v('3.5'), spanUnit: v(M), rank: R('NormalRank') }]).wingspanM).toBe(3.5);
   });
 });

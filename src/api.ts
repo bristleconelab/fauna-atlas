@@ -272,14 +272,11 @@ export async function gbifMatch(name: string): Promise<number | null> {
 }
 /** Where a species' records sit, from a sample of up to 300 of them: the centre to fly to (longitudes on the circle). */
 export async function gbifCentre(key: number, signal?: AbortSignal): Promise<{ lon: number; lat: number } | null> {
-  const r = await getJSON<{ results: { decimalLongitude?: number; decimalLatitude?: number }[] }>(`${GBIF}/occurrence/search?${qs({ ...CLEAN, taxonKey: key, limit: 300 })}`, { signal }).catch(() => null);
-  let sx = 0, sy = 0, sl = 0, n = 0;
-  for (const o of r?.results ?? []) {
-    if (!Number.isFinite(o.decimalLongitude) || !Number.isFinite(o.decimalLatitude)) continue;
-    const x = (o.decimalLongitude! * Math.PI) / 180;
-    sx += Math.cos(x); sy += Math.sin(x); sl += o.decimalLatitude!; n++;
-  }
-  return n ? { lon: (Math.atan2(sy, sx) * 180) / Math.PI, lat: sl / n } : null;
+  // the occupied cells of the range, each weighted by its area: the first records GBIF returns (the old method) lean
+  // to wherever observers are thickest (a cosmopolitan bird centred on Europe); one zoom-0 tile instead of 300 records
+  const cells = await presenceCells(key, signal, 0, 128).catch(() => []);
+  const { rangeCentre } = await import('./geo');
+  return rangeCentre(cells);
 }
 /** Scientific names of a species' synonyms (canonical, no authors). */
 export async function gbifSynonymNames(key: number, signal?: AbortSignal): Promise<string[]> {
@@ -423,12 +420,12 @@ export async function photosByName(names: string[], signal?: AbortSignal): Promi
 /** Where a species has been recorded, as cells of a 256 x 256 Web Mercator grid (~156 km at the equator): read from
  *  GBIF's density map tiles at zoom 2 (16 tiles, square bins of 8 px), a cell counting when its square is coloured.
  *  Sixteen small images instead of thousands of records; the same wild-records filter as the map. */
-export async function presenceCells(taxonKey: number, signal?: AbortSignal): Promise<import('./science').Cell[]> {
+export async function presenceCells(taxonKey: number, signal?: AbortSignal, Z = 2, squareSize = 64): Promise<import('./science').Cell[]> {
   const { mercatorCell } = await import('./science');
-  const Z = 2, PER = 64, N = 4 * PER, out: import('./science').Cell[] = [];
-  await Promise.all(Array.from({ length: 16 }, async (_, i) => {
-    const tx = i % 4, ty = Math.floor(i / 4);
-    const url = `https://api.gbif.org/v2/map/occurrence/density/${Z}/${tx}/${ty}@1x.png?${qs({ srs: 'EPSG:3857', bin: 'square', squareSize: 64, style: 'classic-noborder.poly', basisOfRecord: WILD_BASIS, taxonKey })}`;
+  const T = 2 ** Z, PER = 4096 / squareSize, N = T * PER, out: import('./science').Cell[] = [];
+  await Promise.all(Array.from({ length: T * T }, async (_, i) => {
+    const tx = i % T, ty = Math.floor(i / T);
+    const url = `https://api.gbif.org/v2/map/occurrence/density/${Z}/${tx}/${ty}@1x.png?${qs({ srs: 'EPSG:3857', bin: 'square', squareSize, style: 'classic-noborder.poly', basisOfRecord: WILD_BASIS, taxonKey })}`;
     const res = await fetch(url, { signal });
     if (!res.ok) throw new HttpError(res.status, url);
     const blob = await res.blob();
@@ -565,14 +562,15 @@ export async function wikidataExtras(ids: number[], signal?: AbortSignal): Promi
   const query = `${PREFIXES}PREFIX p: <http://www.wikidata.org/prop/>
 PREFIX psv: <http://www.wikidata.org/prop/statement/value/>
 PREFIX wikibase: <http://wikiba.se/ontology#>
-SELECT ?audio ?massAmt ?massUnit ?lenAmt ?lenUnit ?lifeAmt ?lifeUnit WHERE {
+SELECT ?audio ?massAmt ?massUnit ?lenAmt ?lenUnit ?lifeAmt ?lifeUnit ?spanAmt ?spanUnit ?rank WHERE {
   VALUES ?gbif { ${ids.filter(Number.isInteger).map((x) => `"${x}"`).join(' ')} }
   ?item0 wdt:P846 ?gbif . OPTIONAL { ?item0 wdt:P12765 ?acc } BIND(COALESCE(?acc, ?item0) AS ?item)
   { ?item wdt:P51 ?audio } UNION
-  { ?item p:P2067/psv:P2067 [ wikibase:quantityAmount ?massAmt ; wikibase:quantityUnit ?massUnit ] } UNION
-  { ?item p:P2043/psv:P2043 [ wikibase:quantityAmount ?lenAmt ; wikibase:quantityUnit ?lenUnit ] } UNION
-  { ?item p:P2250/psv:P2250 [ wikibase:quantityAmount ?lifeAmt ; wikibase:quantityUnit ?lifeUnit ] }
-} LIMIT 60`;
+  { ?item p:P2067 ?st . ?st wikibase:rank ?rank ; psv:P2067 [ wikibase:quantityAmount ?massAmt ; wikibase:quantityUnit ?massUnit ] } UNION
+  { ?item p:P2043 ?st . ?st wikibase:rank ?rank ; psv:P2043 [ wikibase:quantityAmount ?lenAmt ; wikibase:quantityUnit ?lenUnit ] } UNION
+  { ?item p:P2250 ?st . ?st wikibase:rank ?rank ; psv:P2250 [ wikibase:quantityAmount ?lifeAmt ; wikibase:quantityUnit ?lifeUnit ] } UNION
+  { ?item p:P2050 ?st . ?st wikibase:rank ?rank ; psv:P2050 [ wikibase:quantityAmount ?spanAmt ; wikibase:quantityUnit ?spanUnit ] }
+} LIMIT 80`;
   const b = (await sparql(query, signal)) ?? [];
   const audioUrl = b.find((x) => x.audio)?.audio?.value;
   const audio = audioUrl ? /Special:FilePath\/(.+)$/.exec(audioUrl)?.[1] : undefined;

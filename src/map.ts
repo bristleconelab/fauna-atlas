@@ -177,6 +177,25 @@ function popupContent(layer: string, p: Record<string, unknown>): HTMLElement | 
   return null;
 }
 
+/** Globe or flat map: the flat (Mercator) view shows a whole region at once without the far side curving away. */
+class ProjectionControl implements maplibregl.IControl {
+  private box?: HTMLElement;
+  onAdd(map: maplibregl.Map) {
+    const btn = h('button', { class: 'proj-btn', attrs: { type: 'button', 'aria-pressed': 'false', title: t('Flat map'), 'aria-label': t('Flat map') }, text: '2D' });
+    btn.addEventListener('click', () => {
+      const flat = btn.getAttribute('aria-pressed') !== 'true';
+      map.setProjection({ type: flat ? 'mercator' : 'globe' });
+      btn.setAttribute('aria-pressed', String(flat));
+      btn.textContent = flat ? '3D' : '2D';
+      btn.title = flat ? t('Globe') : t('Flat map');
+      btn.setAttribute('aria-label', btn.title);
+    });
+    this.box = h('div', { class: 'maplibregl-ctrl maplibregl-ctrl-group' }, btn);
+    return this.box;
+  }
+  onRemove() { this.box?.remove(); }
+}
+
 export class Globe {
   map: maplibregl.Map;
   private ready: Promise<void>;
@@ -190,7 +209,9 @@ export class Globe {
       attributionControl: false, renderWorldCopies: false,
       transformRequest: (url, kind) => fadePolarOverlays(url, kind),
     });
-    this.map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-right');
+    // the compass shows once the globe is turned or tilted; a click turns north back up
+    this.map.addControl(new maplibregl.NavigationControl({ showCompass: true, visualizePitch: true }), 'bottom-right');
+    this.map.addControl(new ProjectionControl(), 'bottom-right');
     this.ready = new Promise((res) => this.map.once('load', () => res()));
     this.map.on('mousemove', (e) => this.hover(e));
     this.map.on('mouseout', () => this.hoverPop.remove());
