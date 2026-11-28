@@ -5,3 +5,4 @@ dist/
 shots-tmp/
 node_modules
 __pycache__/
+.cache/

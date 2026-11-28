@@ -209,7 +209,7 @@ export class Panel {
     const more = h('button', { class: 'btn more', text: tx('Show more') });
     // find in this list, and threatened only: both narrow whatever the kind chips show
     let query = '', onlyThreat = false, threat: Map<number, string> | null = null, looking = 0;
-    let onlyHere = false, share: Map<number, number> | null = null;
+    let onlyHere = false, share: Map<number, number> | null = null, unchecked = 0;
     const find = h('input', { class: 'list-find', attrs: { type: 'search', placeholder: tx('Find in this list'), 'aria-label': tx('Find an animal in this list'), autocomplete: 'off', spellcheck: 'false' } }) as HTMLInputElement;
     const threatBtn = h('button', { class: 'chip threat', attrs: { 'aria-pressed': 'false' }, text: tx('Threatened only') });
     const hereBtn = h('button', { class: 'chip here', attrs: { 'aria-pressed': 'false', title: tx('Species with at least half of all their GBIF records from this area') }, text: tx('Mostly found here') });
@@ -218,7 +218,7 @@ export class Panel {
     const base = () => {
       let shown = active === 'all' ? mixed : list.filter((x) => x.group === active);
       if (onlyThreat && threat) shown = shown.filter((x) => threat!.has(x.key));
-      if (onlyHere && share) shown = shown.filter((x) => (share!.get(x.key) ?? 0) >= HERE_SHARE && x.records >= 3).sort((a, b) => share!.get(b.key)! - share!.get(a.key)! || b.records - a.records);
+      if (onlyHere && share) shown = shown.filter((x) => (share!.get(x.key) ?? 0) >= HERE_SHARE && x.records >= 3).sort((a, b) => b.records - a.records); // best known first: the giant tortoise before an insect seen 20 times
       if (query) shown = shown.filter((x) => nameOf(x).includes(query));
       return shown;
     };
@@ -256,12 +256,14 @@ export class Panel {
     hereBtn.addEventListener('click', async () => {
       onlyHere = !onlyHere;
       hereBtn.setAttribute('aria-pressed', String(onlyHere));
-      if (onlyHere && !share) {
-        const keys = list.map((x) => x.key);
+      if (onlyHere && (!share || unchecked)) {
+        // only species with at least 3 records here can show (see base()): no need to count the rest worldwide
+        const keys = list.filter((x) => x.records >= 3).map((x) => x.key);
         const global = await api.gbifGlobalCounts(keys, signal, (n) => { if (t === this.token) listNote.textContent = tx('Counting their records worldwide: {0} of {1}…', fmt(n), fmt(keys.length)); }).catch(() => null);
         if (t !== this.token) return;
-        if (!global) { listNote.textContent = tx('The worldwide counts did not load; try again.'); onlyHere = false; hereBtn.setAttribute('aria-pressed', 'false'); return; }
-        share = new Map(list.map((x) => [x.key, Math.min(1, x.records / Math.max(1, global.get(x.key) ?? x.records))]));
+        if (!global || !global.size) { listNote.textContent = tx('The worldwide counts did not load; try again.'); onlyHere = false; hereBtn.setAttribute('aria-pressed', 'false'); return; }
+        unchecked = keys.filter((k) => !global.has(k)).length;
+        share = new Map(list.filter((x) => global.has(x.key)).map((x) => [x.key, Math.min(1, x.records / Math.max(1, global.get(x.key)!))]));
         this.share = share;
         listNote.textContent = '';
       }
@@ -270,6 +272,7 @@ export class Panel {
     const render = () => {
       const shown = base();
       if (onlyHere && share) listNote.textContent = tx('{0} with at least half of all their records worldwide from here: found mostly here, or recorded mostly here.', tn(shown.length, '{0} species', '{0} species'));
+      if (onlyHere && share && unchecked) listNote.textContent += ' ' + tx('GBIF was busy: {0} could not be checked; switch the filter off and on to try them again.', tn(unchecked, '{0} species', '{0} species'));
       if (onlyThreat && threat) listNote.textContent = tx('{0} (IUCN: critically endangered, endangered or vulnerable).', tn(shown.length, '{0} threatened species', '{0} threatened species'));
       grid.replaceChildren();
       if (!shown.length) grid.append(h('li', { class: 'mosaic-empty', text: query ? tx('No animal in this list matches. Names are still being looked up for some.') : tx('None here.') }));
@@ -541,7 +544,7 @@ export class Panel {
     const rangeNote = h('p', { class: 'fine', text: tx('Coloured squares on the globe: where it has been recorded (GBIF).') });
     status.hidden = true;
     this.body.append(...[nav, figure, strip, name, latin, lineage, status, actions, about, rangeNote, inArea, facts, bodyBox, vertical, relatives, tools, journeys, links].filter((x): x is HTMLElement => !!x));
-    figure.addEventListener('click', () => openLightbox(shots, 0));
+    figure.addEventListener('click', () => openShot(shots, 0));
     figure.classList.add('zoomable');
     // The well-known animals open at once from the site's own index and photo (milliseconds), while GBIF and Wikidata
     // answer (seconds, from some places much longer); the large photo replaces the small one once it has loaded.
@@ -560,11 +563,14 @@ export class Panel {
       }
     }
 
-    const [sp0, total, red0, info] = await Promise.all([
+    // GBIF first: everything that needs only GBIF draws as soon as it answers. Wikidata (everyday name, large photo,
+    // Wikipedia) fills in when it comes back; QLever can take over ten seconds (12.8 s measured 2026-11-28), and the
+    // page used to wait for it before drawing anything else.
+    const infoP = api.wikidataByAphia([id], undefined, this.lang, signal).then((m) => m.get(id) ?? null).catch(() => null);
+    const [sp0, total, red0] = await Promise.all([
       api.gbifSpecies(id, signal).catch(() => null),
       api.gbifCount({ taxonKey: id }, signal).catch(() => null),
       api.gbifRedList(id, signal),
-      api.wikidataByAphia([id], undefined, this.lang, signal).then((m) => m.get(id) ?? null).catch(() => null),
     ]);
     if (t !== this.token) return;
     // GBIF busy (its rate limit can hold an address back for a minute; getJSON has already retried with pauses): the
@@ -587,7 +593,46 @@ export class Panel {
     }
     if (degraded) rangeNote.after(h('p', { class: 'fine', text: tx('GBIF is busy, so some details (family, record counts) are missing; open the species again in a minute for all of them.') }));
     const sci = sp.canonicalName ?? sp.scientificName;
-    let wiki: WikiInfo = { ...(info ?? {}) };
+    // a first name: the site's own index, else GBIF's English name, else the scientific name; Wikidata may improve it
+    const firstName = (ownK ? (lang === 'uz' ? ownK[1] || ownK[0] : ownK[0]) : undefined) ?? (lang === 'en' && sp.vernacularName ? capital(sp.vernacularName) : undefined);
+    const setName = (common: string | undefined) => {
+      name.textContent = common ?? sci;
+      latin.textContent = sci;
+      latin.hidden = !common;
+      name.classList.toggle('latin', !common);
+      this.species = { id, name: common ?? sci };
+      this.speciesActions(actions, id, common ?? sci, sci);
+    };
+    setName(firstName);
+    const group = groupOfKeys(sp.classKey, sp.phylumKey, sp.orderKey);
+    lineage.textContent = [GROUP_LABEL[group], sp.family && tx('family {0}', sp.family), sp.order && tx('order {0}', sp.order)].filter(Boolean).join(', ');
+    if (red && IUCN_LABEL[red]) { status.hidden = false; status.append(h('span', { class: `iucn iucn-${red}`, text: IUCN_LABEL[red] }), tx(' on the IUCN Red List')); }
+
+    const row = (k: string, v: string) => facts.append(h('dt', { text: k }), h('dd', { text: v }));
+    if (total != null) row(tx('Records'), fmt(total));
+    api.gbifFacet({ taxonKey: id }, 'year', 400, signal).then((ys) => {
+      if (t !== this.token) return;
+      const years = ys.map((y) => Number(y.name)).filter((y) => y >= 1758 && y <= new Date().getUTCFullYear()); // 1758: Linnaeus; 1700 is a placeholder
+      if (years.length) row(tx('Recorded'), `${Math.min(...years)}–${Math.max(...years)}`);
+    }).catch(() => {});
+    api.gbifSynonyms(id, signal).then((syn) => api.wikidataExtras([id, ...syn], signal)).then((x) => { if (t === this.token) this.renderBody(bodyBox, parseTraits(x.rows), x.audio, name.textContent ?? ''); }).catch(() => {});
+    this.renderVertical(vertical, id, signal, t);
+    this.renderStrip(strip, shots, id, sci, name.textContent ?? '', signal, t);
+    if (back?.where) this.renderInArea(inArea, id, back.where, signal, t);
+    this.renderRelatives(relatives, sp, signal, t);
+    this.renderTools(tools, id, sci, this.species?.name ?? sci, signal, t);
+    links.append(
+      h('a', { text: 'GBIF', attrs: { href: `https://www.gbif.org/species/${id}`, ...ext } }), ' ',
+      h('a', { text: 'iNaturalist', attrs: { href: `https://www.inaturalist.org/taxa/search?q=${encodeURIComponent(sci)}`, ...ext } }),
+    );
+    api.gbifSynonymNames(id, signal).catch(() => [] as string[]).then((synNames) => {
+      if (t !== this.token) return;
+      this.cleanups.push(renderJourneys({ id, commonName: this.species?.name ?? sci, sci, names: synNames, signal }, journeys, this.host.journeys, () => t === this.token));
+    });
+
+    // ---- Wikidata: everyday name, the large photo and the Wikipedia summary ----
+    let wiki: WikiInfo = { ...((await infoP) ?? {}) };
+    if (t !== this.token) return;
     if (!wiki.image) {
       const byName = await api.wikidataByAphia([id], new Map([[id, sci]]), this.lang, signal).then((m) => m.get(id)).catch(() => undefined);
       if (t !== this.token) return;
@@ -604,15 +649,8 @@ export class Panel {
       if (t !== this.token) return;
     }
     if (wiki.name && wiki.name.toLowerCase() === sci.toLowerCase()) delete wiki.name;
-    const common = wiki.name ?? (lang === 'en' && sp.vernacularName ? capital(sp.vernacularName) : undefined);
-    name.textContent = common ?? sci;
-    latin.textContent = sci;
-    if (!common) { latin.hidden = true; name.classList.add('latin'); }
-    this.species = { id, name: common ?? sci };
-    this.speciesActions(actions, id, common ?? sci, sci);
-    const group = groupOfKeys(sp.classKey, sp.phylumKey, sp.orderKey);
-    lineage.textContent = [GROUP_LABEL[group], sp.family && tx('family {0}', sp.family), sp.order && tx('order {0}', sp.order)].filter(Boolean).join(', ');
-    if (red && IUCN_LABEL[red]) { status.hidden = false; status.append(h('span', { class: `iucn iucn-${red}`, text: IUCN_LABEL[red] }), tx(' on the IUCN Red List')); }
+    // the site's own name wins for the well-known animals (it is the one their pages use)
+    if (!ownK && wiki.name) setName(wiki.name);
 
     const frame = h('div', { class: 'hero-frame' });
     const cap = h('figcaption', { text: '' });
@@ -627,15 +665,15 @@ export class Panel {
         const cr = c.get(wiki.image!);
         if (cr && t === this.token) { cap.replaceChildren(tx('Photo: '), h('a', { text: `${cr.artist}, ${cr.licence}`, attrs: { href: cr.page, ...ext } })); if (shots[0]) { shots[0].credit = `${cr.artist}, ${cr.licence}, Wikimedia Commons`; shots[0].href = cr.page; } }
       });
-    } else {
+    } else if (!quick) {
       const p = await api.gbifPhoto(id, signal).catch(() => null);
       if (t !== this.token) return;
       if (p) {
-        if (!quick) show();
-        loadPhoto(frame, [p.url.replace('/medium.', '/large.'), p.url], tx('Photo of {0}', name.textContent), true, () => { if (quick && t === this.token) show(); });
+        show();
+        loadPhoto(frame, [p.url.replace('/medium.', '/large.'), p.url], tx('Photo of {0}', name.textContent), true);
         cap.replaceChildren(tx('Photo: '), h('a', { text: `${p.credit}, ${p.licence}, iNaturalist`, attrs: { href: p.page, ...ext } }));
         shots[0] = { src: [p.url.replace('/medium.', '/large.'), p.url], credit: `${p.credit}, ${p.licence}, iNaturalist`, href: p.page, alt: name.textContent ?? '' };
-      } else if (!quick) figure.hidden = true;
+      } else figure.hidden = true;
     }
 
     const title = wiki.article ? articleTitle(wiki.article) : null;
@@ -649,29 +687,6 @@ export class Panel {
         requestAnimationFrame(() => { if (text.scrollHeight <= text.clientHeight + 2) toggle.remove(); });
       });
     }
-
-    const row = (k: string, v: string) => facts.append(h('dt', { text: k }), h('dd', { text: v }));
-    if (total != null) row(tx('Records'), fmt(total));
-    api.gbifFacet({ taxonKey: id }, 'year', 400, signal).then((ys) => {
-      if (t !== this.token) return;
-      const years = ys.map((y) => Number(y.name)).filter((y) => y >= 1758 && y <= new Date().getUTCFullYear()); // 1758: Linnaeus; 1700 is a placeholder
-      if (years.length) row(tx('Recorded'), `${Math.min(...years)}–${Math.max(...years)}`);
-    }).catch(() => {});
-
-    api.gbifSynonyms(id, signal).then((syn) => api.wikidataExtras([id, ...syn], signal)).then((x) => { if (t === this.token) this.renderBody(bodyBox, parseTraits(x.rows), x.audio, name.textContent ?? ''); }).catch(() => {});
-    this.renderVertical(vertical, id, signal, t);
-    this.renderStrip(strip, shots, id, sci, name.textContent ?? '', signal, t);
-    if (back?.where) this.renderInArea(inArea, id, back.where, signal, t);
-    this.renderRelatives(relatives, sp, signal, t);
-    this.renderTools(tools, id, sci, this.species.name, signal, t);
-    const synNames = await api.gbifSynonymNames(id, signal).catch(() => [] as string[]);
-    if (t !== this.token) return;
-    this.cleanups.push(renderJourneys({ id, commonName: this.species.name, sci, names: synNames, signal }, journeys, this.host.journeys, () => t === this.token));
-
-    links.append(
-      h('a', { text: 'GBIF', attrs: { href: `https://www.gbif.org/species/${id}`, ...ext } }), ' ',
-      h('a', { text: 'iNaturalist', attrs: { href: `https://www.inaturalist.org/taxa/search?q=${encodeURIComponent(sci)}`, ...ext } }),
-    );
   }
 
   /** Save (in this browser) and copy the link. */
@@ -695,12 +710,12 @@ export class Panel {
     let photos = await api.inatPhotos(sci, 8, signal).catch(() => [] as api.Photo[]);
     if (photos.length < 2) photos = await api.gbifPhotos(id, 8, signal).catch(() => []);
     if (t !== this.token || photos.length < 2) return;
-    const base = shots.length ? 1 : 0;
+    const base = 1; // shots[0] is the large photo above, which may arrive later
     photos.forEach((p, i) => {
       shots[base + i] = { src: [p.url.replace('/medium.', '/large.'), p.url], credit: `${p.credit}, ${p.licence}, iNaturalist`, href: p.page, alt: who };
-      const b = h('button', { class: 'strip-shot', attrs: { 'aria-label': tx('Photo {0} of {1}', base + i + 1, base + photos.length) } });
+      const b = h('button', { class: 'strip-shot', attrs: { 'aria-label': tx('Photo {0} of {1}', i + 1, photos.length) } });
       loadPhoto(b, [p.url.replace('/medium.', '/small.'), p.url], '', false);
-      b.addEventListener('click', () => openLightbox(shots, base + i));
+      b.addEventListener('click', () => openShot(shots, base + i));
       box.append(h('li', {}, b));
     });
     box.hidden = false;
@@ -918,6 +933,12 @@ export class Panel {
 }
 
 export { THREATENED };
+
+/** Open the viewer at slot i of a list whose first slot (the large photo) may still be empty. */
+function openShot(shots: Shot[], i: number) {
+  const list = shots.filter(Boolean);
+  openLightbox(list, shots[0] ? i : i - 1);
+}
 
 /** Kinds of animal recorded too patchily for a richness estimate (see surveyBox). */
 const UNDERSAMPLED = new Set<GroupId>(['insects', 'spiders', 'crustaceans', 'molluscs', 'worms', 'corals', 'echinoderms']);

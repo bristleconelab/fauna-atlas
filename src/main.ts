@@ -146,10 +146,15 @@ nearBtn.addEventListener('click', () => {
 });
 
 // Protected areas: OpenStreetMap's parks and reserves; a click on one lists the animals recorded inside it
+let parksOn = false;
+const setParks = (on: boolean) => {
+  parksOn = on;
+  $('#parks').setAttribute('aria-pressed', String(on));
+  $('#parks-legend').hidden = !on;
+  globe.setParks(on);
+};
 {
-  const btn = $<HTMLButtonElement>('#parks'), lg = $('#parks-legend');
-  let on = false;
-  btn.addEventListener('click', () => { on = !on; btn.setAttribute('aria-pressed', String(on)); lg.hidden = !on; globe.setParks(on); });
+  $('#parks').addEventListener('click', () => setParks(!parksOn));
   globe.onPark = async (name, lat, lon) => {
     hint.hidden = true;
     const g = await api.parkOutline(name, lat, lon).catch(() => null);
@@ -187,7 +192,9 @@ legend.querySelectorAll<HTMLButtonElement>('.mode button').forEach((b) => b.addE
 
 // Guided tour
 const tour = initTour($('#tour'), {
-  place: (lat, lon, zoom) => { hint.hidden = true; globe.flyTo(lon, lat, zoom); panel.showPlace(lat, lon); },
+  place: (lat, lon, zoom, area, label) => { hint.hidden = true; globe.flyTo(lon, lat, zoom); panel.showPlace(lat, lon, area, label); },
+  compare: (a, b) => { hint.hidden = true; panel.showCompare(a, b); },
+  parks: (on) => { if (on !== parksOn) setParks(on); },
   species: (id) => { hint.hidden = true; panel.showSpecies(id); },
   layer: (mode) => { setLooked(mode === 'age' ? 'age' : mode ? true : false); },
   globe: (lon, lat, zoom) => globe.flyTo(lon, lat, zoom),
@@ -344,7 +351,8 @@ const apply = (s: ViewState) => {
   restoring = true;
   try {
     if ((s.looked ?? false) !== looked) setLooked(s.looked ?? false);
-    if (s.tour && !tour.open) tour.start(s.tour);
+    // a link to a tour stop: the stop opens its own view (place, species, layer); nothing below may undo it
+    if (s.tour && !tour.open) { tour.start(s.tour); return; }
     if (s.sp && s.vs) { hint.hidden = true; panel.showCompare(s.sp, s.vs); }
     else if (s.sp) {
       hint.hidden = true;

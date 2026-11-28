@@ -203,17 +203,45 @@ export async function gbifThreatenedIn(where: Where, signal?: AbortSignal): Prom
   parts.forEach((f, i) => { for (const x of f) if (!out.has(Number(x.name))) out.set(Number(x.name), cats[i]); });
   return out;
 }
-/** Records of each species worldwide (same clean filter as the lists), for "mostly found here": one facet request per
- *  250 species (GBIF reads repeated taxonKey as OR; about 4.5 kB of URL), so a list of 2,000 needs 8. */
+/** Records of each species worldwide (same clean filter as the lists), for "mostly found here". GBIF reads repeated
+ *  taxonKey as OR, so one facet request answers 150 species (about 2.8 kB of URL, under a second; at 250, 4.6 kB,
+ *  the browser's request fails outright, checked 2026-11-28); two go out at once, and the answers are kept in this browser for 30 days: a species' worldwide count changes
+ *  slowly, and neighbouring areas share most of their species. */
+const COUNT_CACHE = 'gcount1', COUNT_DAYS = 30, COUNT_MAX = 80000;
+function countCache(): { day: number; c: Record<string, number> } {
+  const today = Math.floor(Date.now() / 864e5);
+  try {
+    const v = JSON.parse(localStorage.getItem(COUNT_CACHE) ?? 'null');
+    if (v && typeof v.day === 'number' && today - v.day < COUNT_DAYS && v.c && typeof v.c === 'object') return v;
+  } catch { /* blocked or broken: start again */ }
+  return { day: today, c: {} };
+}
 export async function gbifGlobalCounts(keys: number[], signal?: AbortSignal, onPart?: (done: number) => void): Promise<Map<number, number>> {
+  const cache = countCache();
   const out = new Map<number, number>();
-  for (let i = 0; i < keys.length; i += 250) {
-    if (signal?.aborted) break;
-    const part = keys.slice(i, i + 250);
-    const f = await gbifFacet({ taxonKey: part }, 'speciesKey', part.length + 10, signal);
-    for (const x of f) out.set(Number(x.name), x.count);
-    onPart?.(Math.min(i + 250, keys.length));
-  }
+  const todo: number[] = [];
+  for (const k of keys) { const v = cache.c[k]; if (typeof v === 'number') out.set(k, v); else todo.push(k); }
+  let done = keys.length - todo.length;
+  onPart?.(done);
+  const batches: number[][] = [];
+  for (let i = 0; i < todo.length; i += 150) batches.push(todo.slice(i, i + 150));
+  let next = 0;
+  const worker = async () => {
+    while (next < batches.length && !signal?.aborted) {
+      const part = batches[next++];
+      // a batch GBIF refuses (rate limit) is left out, not the whole answer: the caller says how many are unchecked
+      const f = await gbifFacet({ taxonKey: part }, 'speciesKey', part.length + 10, signal).catch((e) => { if (signal?.aborted) throw e; return null; });
+      if (f) for (const x of f) { out.set(Number(x.name), x.count); cache.c[x.name] = x.count; }
+      done += part.length;
+      onPart?.(Math.min(done, keys.length));
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(2, batches.length) }, worker)); // two at once: heavy queries, and GBIF limits the rate
+  if (signal?.aborted) throw new DOMException('aborted', 'AbortError');
+  try {
+    if (Object.keys(cache.c).length > COUNT_MAX) cache.c = Object.fromEntries(Object.entries(cache.c).slice(-COUNT_MAX / 2));
+    localStorage.setItem(COUNT_CACHE, JSON.stringify(cache));
+  } catch { /* storage full: next time asks GBIF again */ }
   return out;
 }
 
@@ -507,13 +535,24 @@ export function speciesQuery(ids: number[], lang: string, by: 'aphia' | 'name' =
 } GROUP BY ?${by}`;
 }
 
+/** A hedged query: QLever first; if it has not answered within HEDGE_MS (it sometimes takes over ten seconds), the
+ *  Wikidata Query Service is asked too, and the first good answer wins. A failure moves on at once. */
+const HEDGE_MS = 4000;
 async function sparql(query: string, signal?: AbortSignal): Promise<Bindings['results']['bindings'] | null> {
-  for (const ep of SPARQL_ENDPOINTS) {
-    const r = await getJSON<Bindings>(`${ep}?${q({ query })}`, { init: { headers: { Accept: 'application/sparql-results+json' } }, timeoutMs: 15000, signal }).catch(() => null);
-    if (r?.results?.bindings) return r.results.bindings;
-    if (signal?.aborted) return null;
-  }
-  return null;
+  const ask = (ep: string) => getJSON<Bindings>(`${ep}?${q({ query })}`, { init: { headers: { Accept: 'application/sparql-results+json' } }, timeoutMs: 15000, signal })
+    .then((r) => r?.results?.bindings ?? null, () => null);
+  return new Promise((resolve) => {
+    let left = SPARQL_ENDPOINTS.length, done = false, next = 0;
+    const finish = (b: Bindings['results']['bindings'] | null) => { if (!done && b) { done = true; resolve(b); } else if (!done && --left === 0) { done = true; resolve(null); } };
+    const start = () => {
+      if (signal?.aborted && !done) { done = true; resolve(null); return; }
+      if (done || next >= SPARQL_ENDPOINTS.length) return;
+      const ep = SPARQL_ENDPOINTS[next++];
+      const timer = setTimeout(start, HEDGE_MS); // still waiting: ask the next endpoint as well
+      ask(ep).then((b) => { clearTimeout(timer); if (!b) start(); finish(b); });
+    };
+    start();
+  });
 }
 
 /** Wikidata facts for WoRMS ids. Items that lack a WoRMS id (common for birds) are looked up again by scientific name,

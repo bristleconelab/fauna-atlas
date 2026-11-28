@@ -40,17 +40,23 @@ export const DENSITY_AREA_KM2 = 10000;
 
 const name = (lang: string): ExpressionSpecification => ['coalesce', ['get', `name:${lang}`], ['get', 'name:en'], ['get', 'name']];
 
+/** Borders and names. Below zoom 6 from the site's own Natural Earth files (scripts/build_basemap.py, about 100 kB
+ *  gzipped); OpenFreeMap's planet tiles carry every layer and cost 12.5 MB for one species page (2026-11-28), so they
+ *  load only from zoom 6, where a border must match the imagery, or when protected areas are switched on. */
 function labelLayers(lang: string): LayerSpecification[] {
   const halo = { 'text-halo-color': 'rgba(11,34,51,0.85)', 'text-halo-width': 1.2, 'text-halo-blur': 0.4 };
+  const borderPaint = { 'line-color': '#f4f8f7', 'line-opacity': ['interpolate', ['linear'], ['zoom'], 1, 0.22, 5, 0.4], 'line-width': ['interpolate', ['linear'], ['zoom'], 1, 0.4, 6, 1] } as const;
   return [
+    { id: 'borders-ne', type: 'line', source: 'ne-borders', maxzoom: 6, paint: borderPaint as never },
     {
-      id: 'borders', type: 'line', source: 'omt', 'source-layer': 'boundary',
+      id: 'borders', type: 'line', source: 'omt', 'source-layer': 'boundary', minzoom: 6,
       filter: ['all', ['==', ['get', 'admin_level'], 2], ['!=', ['get', 'maritime'], 1], ['!=', ['get', 'disputed'], 1]],
-      paint: { 'line-color': '#f4f8f7', 'line-opacity': ['interpolate', ['linear'], ['zoom'], 1, 0.22, 5, 0.4], 'line-width': ['interpolate', ['linear'], ['zoom'], 1, 0.4, 6, 1] },
+      paint: borderPaint as never,
     },
     {
-      id: 'water-names', type: 'symbol', source: 'omt', 'source-layer': 'water_name',
-      filter: ['in', ['get', 'class'], ['literal', ['ocean', 'sea', 'bay', 'lake', 'strait']]],
+      id: 'water-names', type: 'symbol', source: 'ne-labels',
+      filter: ['any', ['all', ['==', ['get', 'class'], 'ocean']], ['all', ['in', ['get', 'class'], ['literal', ['sea', 'bay', 'strait']]], ['>=', ['zoom'], ['+', 1.5, ['*', 0.5, ['get', 'rank']]]]],
+        ['all', ['==', ['get', 'class'], 'lake'], ['>=', ['zoom'], 3.5]]],
       layout: {
         'text-field': name(lang), 'text-font': ['Noto Sans Italic'], 'text-letter-spacing': 0.08, 'text-max-width': 8,
         'text-size': ['match', ['get', 'class'], 'ocean', 14, 'sea', 12, 11],
@@ -58,12 +64,10 @@ function labelLayers(lang: string): LayerSpecification[] {
       paint: { 'text-color': '#bfe3ee', ...halo },
     },
     {
-      id: 'place-names', type: 'symbol', source: 'omt', 'source-layer': 'place',
-      // no continent points: OSM has "Eurasia" and "Afro-Eurasia" ones that only add noise to a globe
+      id: 'place-names', type: 'symbol', source: 'ne-labels',
       filter: ['any',
-        ['all', ['==', ['get', 'class'], 'country'], ['>=', ['zoom'], 2.2]],
-        ['all', ['in', ['get', 'class'], ['literal', ['island', 'archipelago']]], ['>=', ['zoom'], 4]],
-        ['all', ['==', ['get', 'class'], 'city'], ['<=', ['coalesce', ['get', 'rank'], 99], 4], ['>=', ['zoom'], 4.5]]],
+        ['all', ['==', ['get', 'class'], 'country'], ['>=', ['zoom'], ['+', 1.6, ['*', 0.35, ['get', 'rank']]]]],
+        ['all', ['==', ['get', 'class'], 'city'], ['>=', ['zoom'], 4.5]]],
       layout: {
         'text-field': name(lang), 'text-font': ['Noto Sans Regular'], 'text-max-width': 7,
         'text-size': ['match', ['get', 'class'], 'country', 11.5, 11],
@@ -92,6 +96,8 @@ function style(lang: string): StyleSpecification {
         type: 'raster', tiles: [S2], tileSize: 256, minzoom: 6, maxzoom: 14,
         attribution: '<a href="https://s2maps.eu">Sentinel-2 cloudless 2016</a> by EOX, CC BY 4.0 (contains modified Copernicus Sentinel data 2016)',
       },
+      'ne-borders': { type: 'geojson', data: `${import.meta.env.BASE_URL}data/basemap/borders.json`, maxzoom: 6 },
+      'ne-labels': { type: 'geojson', data: `${import.meta.env.BASE_URL}data/basemap/labels.json`, attribution: '<a href="https://www.naturalearthdata.com">Natural Earth</a>' },
       omt: { type: 'vector', url: OMT, attribution: '<a href="https://openfreemap.org">OpenFreeMap</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' },
       square: { type: 'geojson', data: EMPTY },
       overlap: { type: 'geojson', data: EMPTY },
